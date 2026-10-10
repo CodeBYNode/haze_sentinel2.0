@@ -12,26 +12,26 @@ The four main destinations are Today, Schedule, Assistant, and Profile. The onbo
 
 ## Frontend features
 
-- Today: current Malaysian API, separate arrival/relief outlook, source sheet, nearby pollution map, affected-plan bar, and selectable hourly forecast.
+- Today: backend WAQI AQI, pollutant indices, actual observation time, station details and attribution, daily forecasts when current, and attributed backend news. The optional hourly demo and affected-plan examples remain clearly labeled.
 - Schedule: date navigation, morning/afternoon/evening groups, activity forms and action sheets, and AI planning chat opened from its icon.
-- Assistant: activity prompt icons, local planning responses, and proposal cards. Calendar changes require review and confirmation, respect fixed commitments, and avoid overlapping existing activities.
+- Assistant: backend air-quality answers and returned tomorrow assessments, with visible errors and retry. Schedule replanning remains local demo behavior; proposal cards still require review and confirmation and preserve fixed commitments.
 - Account: email login and registration layouts with guest access. Authentication is explicitly unconfigured and sends no credentials or email.
 - Profile: personal details, notification preferences, optional health preferences, JSON export, and clearing profile information.
 - Onboarding: three short introductions with original nature and haze-related SVG artwork.
 
 ## Data and integration boundaries
 
-The active mobile UI is in `src/mobile`. Readings, geography, forecasts, and activity assessments are labeled demo data. The shared sample data and calendar helpers live in `src/ui/model.ts`; constrained local assistant responses live in `src/mobile/planning.ts`. No cloud LLM, news ingestion, authentication service, or live air-quality feed is connected.
+The active mobile UI is in `src/mobile`. Current air quality, daily forecasts, station selection, news and general assistant answers use the existing Node backend. `src/mobile/useLiveData.ts` handles independent visible-page refreshes using `/api/config`. The shared sample schedule and calendar helpers remain in `src/ui/model.ts`; demo replanning remains in `src/mobile/planning.ts`. Authentication, schedule storage and notifications have no backend integration. See [the frontend data map](docs/backend-rendering.md).
 
-The source drawer links real background reporting with original publication dates. It explicitly states that these articles were not used to calculate the illustrative arrival/relief times. A production prediction needs current observations, a forecast service, and source records from that service. Display categories use the [Malaysian DOE API bands](https://www.doe.gov.my/en/api-2/); they do not constitute a personal health assessment.
+The source drawer renders backend news, publication dates, feed retrieval time, stale/error status, and station attribution. WAQI categories are rendered as returned, separately from Malaysian API/IPU. Arrival and relief times are unavailable because the backend provides daily forecasts only. Past forecast records are not presented as an upcoming outlook.
 
-`VITE_AIR_QUALITY_DEMO=false` shows unavailable current conditions and prediction timing on Today. The local schedule and assistant remain labeled demo features. The older provider and recommendation interfaces in `src/services` and `src/core` remain available for a future backend integration.
+The mobile frontend always requests the backend for supported data. Provider failures show unavailable/error states rather than sample readings. The optional hourly demo is explicitly separate from station data. The older `VITE_AIR_QUALITY_DEMO` setting no longer controls this UI.
 
 ## Storage and location
 
-Activities and onboarding progress are stored in browser local storage, with fallback handling when storage is unavailable. Profile and health preferences are held only in memory for the session and are not passed to the assistant. Profile clearing does not delete activities.
+Activities and onboarding progress are stored in browser local storage, with fallback handling when storage is unavailable. Profile and health preferences are held only in memory. Selected health conditions and station context are sent with backend assistant questions; name, email and free-text notes are excluded. Profile clearing does not delete activities.
 
-Location can be chosen manually. Device geolocation is requested only after the user chooses the location control and selects the nearest supported demo area; coordinates are not sent to a reverse-geocoding service. Reading values remain illustrative.
+Location uses backend station search. When search returns no results, a city can be selected through `/api/air-quality?location=...`. Device geolocation is requested only on user action and sent to the backend coordinate feed. The returned station coordinates, rather than precise device coordinates, are retained for this session.
 
 ## Design and verification
 
@@ -69,7 +69,7 @@ The checked-in `.env.example` contains variable names only. Never prefix these v
 - `server/lib/assessment.mjs` uses the WAQI forecast's daily PM2.5/PM10 maximum for tomorrow in `Asia/Kuala_Lumpur`. When tomorrow's forecast is missing, its result is explicitly unknown. The profile changes caution and explanation only; it never changes measurements.
 - `server/lib/openrouter.mjs` sends a bounded conversation and verified current/forecast context to the configured model. It does not receive the free-text health note; it receives only whether one was disclosed. It is instructed to explain, not override, the server's structured result.
 - `/api/chat` includes the latest AQI observation and a non-blocking snapshot of cached, attributed articles. News refreshes never delay AQI reads or block chat when the news service is slow. The model must treat articles as reports, retain links, avoid counting syndication as confirmation, and disclose unavailable/stale news or forecast data.
-- Guest preferences stay in browser local storage. No cloud sync or authentication is implemented.
+- Activities and onboarding progress stay in browser local storage; the mobile profile stays in memory for the session. No cloud sync or authentication is implemented.
 
 WAQI's index and category are identified as WAQI AQI. They are not Malaysia's official API/IPU and are not converted. The daily AQI maximum is a model forecast, not an observation or official Malaysian advisory; it does not imply hour-by-hour conditions. The card links to WAQI and displays source attributions. AQICN's documented public terms prohibit selling or paid-service inclusion and disallow cached/archived redistribution; public for-profit use needs explicit agreement. This MVP does not store historical readings or train a model.
 

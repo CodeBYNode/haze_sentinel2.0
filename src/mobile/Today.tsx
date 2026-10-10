@@ -1,37 +1,88 @@
 import { useState } from 'react';
-import { ArrowDownRight, ArrowUpRight, CalendarClock, ChevronDown, ChevronRight, CloudSun, FileText, Info, MapPin, MoveUpRight, Wind } from 'lucide-react';
-import { affectedPlans, dateLabel, forecast, locations, severity, severityNames, TODAY, type Plan } from '../ui/model';
+import { CalendarClock, ChevronDown, ChevronRight, CloudSun, FileText, Info, MapPin, RefreshCw, Wind } from 'lucide-react';
+import { affectedPlans, dateLabel, type Plan } from '../ui/model';
+import type { AQReading } from '../core/types';
+import type { NewsFeed, NewsArticle } from '../services/news';
 import { BotanicalNote, DemoNote, ExternalLink, Forecast, HazeMap, Modal, SectionTitle } from './Kit';
+import { forecastDays, observationState, timestamp, todayInMalaysia, waqiTone } from './backend';
 
-export function Today({ location, plans, onLocation, onAffected, onLocate, available }: { location: string; plans: Plan[]; onLocation: () => void; onAffected: () => void; onLocate: () => void; available: boolean }) {
+type Props = {
+  location: string; plans: Plan[]; onLocation: () => void; onAffected: () => void;
+  reading: AQReading | null; loading: boolean; error: string; onRefresh: () => void;
+  news: NewsFeed | null; newsLoading: boolean; newsError: string; onRefreshNews: () => void;
+};
+const pollutantNames: Record<string, string> = { pm25: 'PM2.5', pm10: 'PM10', o3: 'O₃', no2: 'NO₂', so2: 'SO₂', co: 'CO' };
+
+export function Today({ location, plans, onLocation, onAffected, reading, loading, error, onRefresh, news, newsLoading, newsError, onRefreshNews }: Props) {
   const [sources, setSources] = useState(false);
-  const [mapSelected, setMapSelected] = useState(location);
-  const reading = locations.find(l => l.name === location) || locations[0];
-  const outlook = forecast.map(f => ({ ...f, api: f.api + reading.offset }));
-  const firstHigher = outlook.find(f => f.api > 100);
-  const peakIndex = outlook.reduce((best, f, i) => f.api > outlook[best].api ? i : best, 0);
-  const relief = outlook.slice(peakIndex + 1).find(f => f.api <= 100);
+  const [hourlyDemo, setHourlyDemo] = useState(false);
+  const [mapDemo, setMapDemo] = useState(false);
+  const [demoCity, setDemoCity] = useState('Kuala Lumpur');
   const affected = affectedPlans(plans);
+  const allForecasts = forecastDays(reading);
+  const daily = allForecasts.filter(row => row.day >= todayInMalaysia());
   return <div className="today-page">
-    <header className="location-heading"><p>{dateLabel(TODAY)}</p><button onClick={onLocation} aria-label="Change location"><MapPin size={16}/><h1>{location}</h1><ChevronDown size={16}/></button><span>Your air. Your plans. A little clarity.</span></header>
-    <section className="air-card" aria-label="Current air quality">
-      <div className="card-top"><span><Wind size={17}/>Current air quality</span><span className="reading-time">12 PM MYT</span></div>
-      <div className="reading-main"><span className="api-number">{available ? reading.api : '—'}</span><div><span className="reading-unit">Malaysian API</span><h2>{available ? severityNames[severity(reading.api)] : 'Unavailable'}</h2><span className="reading-comparison">{available ? 'A view of the air around you' : 'Connect an air-quality provider'}</span></div><span className="air-decoration" aria-hidden="true"><Wind size={52} strokeWidth={.75}/></span></div>
-      <div className="api-scale" aria-label="Malaysian API scale"><span/><span/><span/><span/><span/>{available && <i style={{ left: Math.min(97, reading.api / 350 * 100) + '%' }}/>}</div><div className="scale-labels"><span>Good</span><span>Hazardous</span></div>
-      <DemoNote>{available ? 'Demo reading · not a live observation' : 'Live data unavailable'}</DemoNote>
+    <header className="location-heading"><p>{dateLabel(todayInMalaysia())}</p><button onClick={onLocation} aria-label="Change location"><MapPin size={16}/><h1>{location}</h1><ChevronDown size={16}/></button><span>Your air. Your plans. A little clarity.</span></header>
+    <section className="air-card" aria-label="Current air quality" aria-busy={loading}>
+      <div className="card-top"><span><Wind size={17}/>Current air quality</span><button className="icon-button" disabled={loading} onClick={onRefresh} aria-label="Refresh air quality"><RefreshCw size={17}/></button></div>
+      {loading && !reading ? <p className="live-notice" role="status">Loading current conditions…</p> : error ? <div className="live-notice" role="alert"><strong>Current conditions unavailable</strong><p>{error}</p><button className="text-button" onClick={onRefresh}>Try again</button></div> : <>
+        <div className="reading-main"><span className="api-number">{reading?.aqi ?? '—'}</span><div><span className="reading-unit">WAQI AQI</span><h2>{reading?.category || 'Unavailable'}</h2><span className="reading-comparison">{reading?.station || location}</span></div><span className="air-decoration" aria-hidden="true"><Wind size={52} strokeWidth={.75}/></span></div>
+        <div className="waqi-scale" aria-label="WAQI AQI scale"><span/><span/><span/><span/><span/><span/>{reading?.aqi != null && <i style={{ left: Math.min(97, reading.aqi / 500 * 100) + '%' }}/>}</div><div className="scale-labels"><span>Good</span><span>Hazardous</span></div>
+        <p className="demo-note"><span/>{observationState(reading?.observedAt)} · {timestamp(reading?.observedAt)}</p>
+        <div className="live-pollutants">{Object.entries(pollutantNames).map(([key, label]) => <div key={key}><span>{label}</span><strong>{reading?.pollutants?.[key] ?? '—'}</strong></div>)}</div>
+        <p className="fine-print">Pollutant values are WAQI individual indices, not µg/m³. Dominant pollutant: {pollutantNames[reading?.dominantPollutant || ''] || reading?.dominantPollutant || 'unavailable'}.</p>
+      </>}
+      <button className="text-button" onClick={() => setSources(true)}><FileText size={14}/> Data source &amp; attribution</button>
     </section>
-    <button className="outlook-card" onClick={() => setSources(true)} aria-label="View haze prediction and its sources">
+    <button className="outlook-card" onClick={() => setSources(true)} aria-label="View haze outlook and its sources">
       <div className="card-top"><span><CloudSun size={17}/>Haze outlook</span><span className="outlook-source-link"><FileText size={13}/>Sources<ChevronRight size={13}/></span></div>
-      {available ? <><div className="outlook-windows"><div><span><MoveUpRight size={14}/>{reading.api > 100 ? 'Higher haze' : 'May build from'}</span><strong>{reading.api > 100 ? 'Now' : firstHigher?.time || 'No window'}</strong></div><div><span><ArrowDownRight size={15}/>May ease from</span><strong>{relief?.time || 'Not yet known'}</strong></div></div><p>Plan a little ahead. See what informs this outlook.</p></> : <><h2>Timing isn’t available yet.</h2><p>Open sources to see the connection status.</p></>}
-      <span className="outlook-footnote">Illustrative prediction</span>
+      <h2>{daily.length ? 'Daily forecast available' : 'Forecast unavailable'}</h2><p>{daily.length ? 'Explore the station’s daily pollutant forecast below.' : allForecasts.length ? 'The returned forecast dates are in the past. No upcoming forecast is available.' : 'This station has no usable daily forecast to display.'}</p>
+      <span className="outlook-footnote">Arrival and relief times are unavailable. Daily forecasts do not give hourly timing.</span>
     </button>
-    <button className={'affected-bar' + (!affected.length ? ' clear' : '')} onClick={onAffected}><span className="affected-icon"><CalendarClock size={20}/></span><span><strong>{affected.length ? `${affected.length} plans may be affected` : 'Your plans have breathing room'}</strong><small>{affected.length ? affected.map(p => p.title).join(' & ') : 'Review your upcoming activities'}</small></span><ChevronRight size={19}/></button>
-    {available ? <><HazeMap selected={mapSelected} onSelect={setMapSelected} located={false} onLocate={onLocate}/><Forecast offset={reading.offset}/></> : <section className="empty-card"><Wind size={25}/><h2>A clearer picture is on its way.</h2><p>Nearby readings and forecasts will appear when a data source is connected.</p><ExternalLink href="https://apims.doe.gov.my/">Check official air quality</ExternalLink></section>}
+    <section className="hourly-demo demo-map"><button className="text-button" onClick={() => setMapDemo(value => !value)} aria-expanded={mapDemo}>{mapDemo ? 'Hide' : 'Explore'} nearby map demo<ChevronDown size={15}/></button>{mapDemo && <><DemoNote>Demo map · 10 October 2026 · the backend has no nearby-station map feed</DemoNote><HazeMap selected={demoCity} onSelect={setDemoCity} located={false} onLocate={onLocation}/></>}</section>
+    <button className={'affected-bar' + (!affected.length ? ' clear' : '')} onClick={onAffected}><span className="affected-icon"><CalendarClock size={20}/></span><span><strong>{affected.length ? `${affected.length} demo plans may be affected` : 'Review your demo plans'}</strong><small>Schedule uses sample readings · independent of live AQI</small></span><ChevronRight size={19}/></button>
+    <section className="station-card"><SectionTitle detail="Station returned by the air-quality provider">Monitoring station</SectionTitle><div className="station-summary"><MapPin size={25}/><div><strong>{reading?.station || 'Unavailable'}</strong><p>{reading?.coordinates?.lat != null && reading?.coordinates?.lon != null ? `${reading.coordinates.lat.toFixed(4)}° N, ${reading.coordinates.lon.toFixed(4)}° E` : 'Station coordinates unavailable'}</p></div></div>{reading?.stationUrl && <ExternalLink href={reading.stationUrl}>View this station on WAQI</ExternalLink>}</section>
+    <section className="forecast-section"><SectionTitle detail="WAQI model forecast · daily values">The days ahead</SectionTitle>
+      {daily.length ? <div className="daily-forecast">{daily.map(row => <article key={row.day + row.pollutant}><div><strong>{dateLabel(row.day, true)}</strong><span>{pollutantNames[row.pollutant] || row.pollutant.toUpperCase()}{row.pollutant === 'uvi' ? ' · UV index' : ' · forecast index'}</span></div><dl><div><dt>Min</dt><dd>{row.min}</dd></div><div><dt>Average</dt><dd>{row.avg}</dd></div><div><dt>Max</dt><dd>{row.max}</dd></div></dl></article>)}</div> : <p className="body-copy">No daily forecast returned for this station. Check again later or choose another station.</p>}
+      <p className="fine-print">Forecast issue time: unavailable from this feed. Daily values are modelled and are separate from the current observation.</p>
+    </section>
+    <section className="hourly-demo"><button className="text-button" onClick={() => setHourlyDemo(value => !value)} aria-expanded={hourlyDemo}>{hourlyDemo ? 'Hide' : 'Explore'} hourly forecast demo<ChevronDown size={15}/></button>{hourlyDemo && <><DemoNote>Demo only · 10 October 2026 · unrelated to this station’s live data</DemoNote><div className="outlook-windows"><div><span>Demo may build from</span><strong>1 PM</strong></div><div><span>Demo may ease from</span><strong>7 PM</strong></div></div><Forecast offset={0}/></>}</section>
     <BotanicalNote>A little planning, more room for living.</BotanicalNote>
-    {sources && <Modal title="Behind the outlook" onClose={() => setSources(false)}><div className="source-summary"><CloudSun size={24}/><div><strong>{location}</strong><span>{available ? 'Illustrative outlook · 10 October 2026' : 'Prediction service not connected'}</span></div></div><p className="body-copy">{available ? 'The arrival and relief times come from the demo hourly API curve. News retrieval and a live prediction model are not connected.' : 'No current readings, news feed, or prediction model is connected. An arrival or relief time cannot be determined.'}</p><div className="source-status"><Info size={17}/><p>The reporting below is background context. It was not used to calculate today’s demo timing.</p></div><SectionTitle detail="Original publication dates are shown">News context</SectionTitle>
-      <a className="news-source" href="https://www.bernama.com/en/region/news.php?id=2596384" target="_blank" rel="noreferrer"><span className="publisher-mark">B</span><div><span className="source-meta">Bernama · 19 Aug 2026</span><h3>MetMalaysia: Haze eases for now but could return soon</h3><p>Reporting on weather conditions and haze variability.</p></div><ArrowUpRight size={17}/></a>
-      <a className="news-source" href="https://www.bernama.com/en/news.php?id=2443001" target="_blank" rel="noreferrer"><span className="publisher-mark">B</span><div><span className="source-meta">Bernama · 9 Jul 2025</span><h3>Open burning and monsoon haze</h3><p>Background reporting on regional haze drivers.</p></div><ArrowUpRight size={17}/></a>
-      <SectionTitle>Official reference</SectionTitle><ExternalLink href="https://www.doe.gov.my/en/api-2/">Malaysia’s Air Pollutant Index</ExternalLink><p className="fine-print">News can provide context. Reliable timing also needs current observations and atmospheric forecasts.</p>
+    {sources && <Modal title="Behind the outlook" onClose={() => setSources(false)}><div className="source-summary"><CloudSun size={24}/><div><strong>{reading?.station || location}</strong><span>{reading?.source || 'Air-quality source unavailable'}</span></div></div><p className="body-copy">Index: {reading?.scale || 'Unavailable'}. Observation: {timestamp(reading?.observedAt)}. WAQI AQI is separate from Malaysia’s official API/IPU.</p>
+      <div className="source-status"><Info size={17}/><p>The backend supplies station observations and daily forecasts. It does not supply an hourly forecast, arrival time, or relief time. News reports provide context and do not determine the forecast.</p></div>
+      {reading?.attributions?.length ? <><SectionTitle>Provider attribution</SectionTitle>{reading.attributions.map((source, index) => <ExternalLink key={source.url + index} href={source.url}>{source.name}</ExternalLink>)}</> : <p className="fine-print">No station attribution returned.</p>}
+      <ExternalLink href={reading?.stationUrl || 'https://aqicn.org/'}>World Air Quality Index Project</ExternalLink>
+      <NewsContext feed={news} loading={newsLoading} error={newsError} onRefresh={onRefreshNews}/>
+      <SectionTitle>Official reference</SectionTitle><ExternalLink href="https://apims.doe.gov.my/">Malaysia’s official Air Pollutant Index</ExternalLink>
     </Modal>}
   </div>;
+}
+
+function publicationTime(article: NewsArticle) {
+  if (!article.publishedAt) return 'Publication date unavailable';
+  const value = article.publishedAt.includes('T') ? article.publishedAt : article.publishedAt.replace(' ', 'T') + (article.publishedAtTimezone === 'UTC' ? 'Z' : '');
+  // Keep an unspecified publication timezone as supplied instead of guessing the browser timezone.
+  return /Z$|[+-]\d{2}:?\d{2}$/.test(value) ? timestamp(value) : article.publishedAt + (article.publishedAtTimezone ? ' ' + article.publishedAtTimezone : ' · timezone unavailable');
+}
+
+export function newsExcerpt(value: string) {
+  const text = value.replace(/\s+/g, ' ').trim();
+  if (text.length <= 260) return text;
+  const end = text.lastIndexOf(' ', 260);
+  return text.slice(0, end > 180 ? end : 260) + '…';
+}
+
+export function NewsContext({ feed, loading, error, onRefresh }: { feed: NewsFeed | null; loading: boolean; error: string; onRefresh: () => void }) {
+  return <section className="news-context"><SectionTitle detail={feed?.source || 'Backend news feed'} action={<button className="icon-button" onClick={onRefresh} disabled={loading} aria-label="Refresh news"><RefreshCw size={16}/></button>}>News context</SectionTitle>
+    {loading && !feed && <p className="body-copy" role="status">Loading reported updates…</p>}
+    {(error || feed?.error) && <p className="live-notice" role="alert">{error || feed?.error}</p>}
+    {feed && <p className="fine-print">{feed.stale || error ? 'Last available feed · stale' : feed.status === 'partial' ? 'Partial feed' : feed.status === 'unavailable' ? 'Feed unavailable' : 'Feed retrieved'} · {timestamp(feed.updatedAt)}{feed.refreshing ? ' · refreshing' : ''}</p>}
+    {feed?.articles.map(article => <article className="news-source" key={article.id}><div><span className="source-meta">{article.publisher} · {publicationTime(article)}</span><h3><a href={article.url} target="_blank" rel="noreferrer">{article.title}</a></h3>{article.description && <p>{newsExcerpt(article.description)}</p>}{article.sources.length > 1 && <p className="fine-print">Also reported by {article.sources.slice(1).map((source, index) => <span key={source.url || source.name}>{index ? ', ' : ''}{source.url ? <a href={source.url} target="_blank" rel="noreferrer">{source.name}</a> : source.name}</span>)}.</p>}</div></article>)}
+    {!loading && !error && !feed?.articles.length && <p className="body-copy">{feed?.status === 'unavailable' ? 'News is currently unavailable.' : 'No relevant reports returned.'}</p>}
+    <p className="fine-print">Reports are separate from observed air quality and official advisories. Publication time differs from feed retrieval time.</p>
+  </section>;
+}
+
+export function LiveReadingBadge({ reading }: { reading: AQReading }) {
+  return <span className={'api-badge ' + waqiTone(reading.aqi)}><i/>{reading.category || 'Unavailable'}<span>{reading.aqi ?? '—'}</span></span>;
 }
