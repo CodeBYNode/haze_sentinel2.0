@@ -93,6 +93,29 @@ the browser. Chat includes the current WAQI reading and the server's structured
 assessment, and uses only the available news snapshot without waiting for news
 requests. Missing data is disclosed instead of substituted with demo values.
 
+`GET /api/haze-outlook` returns `{ reading, outlook }` from one WAQI request. It
+uses the same server-only `WAQI_API_TOKEN` and location selectors as air-quality:
+`?location=Kuala+Lumpur`, `?stationId=5780`, or `?lat=3.14&lon=101.69`. Without a
+selector it uses `/feed/here/` (the server's IP location). Today requests this
+combined endpoint and displays its current reading and processed Haze outlook.
+
+The deterministic estimator prefers PM2.5, falling back to PM10. It compares
+daily average indices over the next seven calendar days in Asia/Kuala_Lumpur,
+starting from today's forecast average or a same-pollutant observation no older
+than two hours. A drop from a previous high or rise from a previous low must be
+at least **20% and 10 index points**. `alleviation` and `anotherWave` independently
+contain `expected` and a `timeframe` with the forecast date, day boundaries and
+display label. Coverage lists the actual available forecast dates; missing days
+are not interpolated. A wave means possible particulate worsening, not confirmed
+plume arrival. This is a low-confidence heuristic, not an official advisory.
+
+If no valid future particulate forecast or baseline exists, the response remains
+HTTP 200 with `outlook.status: "unavailable"`, a reason such as `stale_forecast`,
+and both expectations `null`. This preserves current observations without
+inventing an outlook. `false` means no significant change signal within the
+available forecast only. Exact hours and forecast issue times are unavailable.
+No additional provider, model call, secret, or dependency is needed.
+
 The remaining API routes (news, config, health and spendings) still run on the
 standalone Node server and need their own Vercel functions or a deployed backend
 before those features will work on Vercel.

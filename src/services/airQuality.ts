@@ -1,4 +1,5 @@
 import type { AQReading, Profile } from '../core/types';
+import type { HazeOutlook } from '../core/outlook';
 export type StationOption = { name: string; stationId: string; coordinates: { lat: number; lon: number } | null; aqi: number | null };
 export type RefreshIntervals = { hazeRefreshIntervalMinutes: number; newsRefreshIntervalHours: number };
 export type BackendReading = Omit<AQReading, 'scale' | 'location'> & { indexName?: string };
@@ -13,13 +14,23 @@ export function normalizeReading(value: BackendReading): AQReading {
   if (!value || typeof value !== 'object' || (value.aqi != null && (typeof value.aqi !== 'number' || !Number.isFinite(value.aqi) || value.aqi < 0))) throw new Error('The server returned an invalid air-quality reading.');
   return { ...value, scale: value.indexName, location: value.station || undefined, pm25: value.pollutants?.pm25, pm10: value.pollutants?.pm10, demo: false };
 }
-export async function getCurrentAir(profile: Profile, signal?: AbortSignal): Promise<AQReading> {
+function locationQuery(profile: Profile): string {
   const q = new URLSearchParams();
   if (profile.stationId) q.set('stationId', profile.stationId);
   else if (profile.locationCoords) { q.set('lat', String(profile.locationCoords.lat)); q.set('lon', String(profile.locationCoords.lon)); }
   else q.set('location', profile.location);
-  const body = await message(await fetch('/api/air-quality?' + q.toString(), { signal, cache: 'no-store' }));
+  return q.toString();
+}
+export async function getCurrentAir(profile: Profile, signal?: AbortSignal): Promise<AQReading> {
+  const body = await message(await fetch('/api/air-quality?' + locationQuery(profile), { signal, cache: 'no-store' }));
   return { ...normalizeReading(body.reading), stationId: body.reading.stationId || profile.stationId };
+}
+export async function getHazeOutlook(profile: Profile, signal?: AbortSignal): Promise<{ reading: AQReading; outlook: HazeOutlook }> {
+  const body = await message(await fetch('/api/haze-outlook?' + locationQuery(profile), { signal, cache: 'no-store' }));
+  const outlook = body.outlook;
+  if (!outlook || !['estimated', 'unavailable'].includes(outlook.status) || typeof outlook.summary !== 'string'
+    || !outlook.alleviation || !outlook.anotherWave) throw new Error('The server returned an invalid haze outlook.');
+  return { reading: { ...normalizeReading(body.reading), stationId: body.reading.stationId || profile.stationId }, outlook };
 }
 export async function searchStations(query: string, signal?: AbortSignal): Promise<StationOption[]> {
   const body = await message(await fetch('/api/locations/search?q=' + encodeURIComponent(query), { signal, cache: 'no-store' }));

@@ -7,6 +7,7 @@ import {createChatHandler} from './lib/chat.mjs';
 import {handleSpendings} from './spendings.mjs';
 const port=Number(process.env.API_PORT||8787),waqi=new WaqiService(),news=new NewsDataService();
 const handleAirQuality=createAirQualityHandler({waqi});
+const handleHazeOutlook=createAirQualityHandler({waqi,includeOutlook:true});
 const handleLocationSearch=createLocationSearchHandler({waqi});
 const handleChat=createChatHandler({waqi,news});
 const handleTomorrow=createChatHandler({waqi,news,tomorrow:true});
@@ -24,6 +25,7 @@ const server=createServer(async(req,res)=>{
  if(req.method==='GET'&&url.pathname==='/api/news')return json(res,200,await news.get());
  if(url.pathname==='/api/locations/search')return await handleLocationSearch(req,res);
  if(url.pathname==='/api/air-quality')return await handleAirQuality(req,res);
+ if(url.pathname==='/api/haze-outlook')return await handleHazeOutlook(req,res);
  if(url.pathname==='/api/chat')return await handleChat(req,res);
  if(url.pathname==='/api/assessment/tomorrow')return await handleTomorrow(req,res);
  return json(res,404,{error:'API route not found.'})

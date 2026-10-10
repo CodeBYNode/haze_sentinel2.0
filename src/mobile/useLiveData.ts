@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import type { AQReading, Profile } from '../core/types';
-import { getCurrentAir, getRefreshIntervals } from '../services/airQuality';
+import type { HazeOutlook } from '../core/outlook';
+import { getHazeOutlook, getRefreshIntervals } from '../services/airQuality';
 import { getNews, type NewsFeed } from '../services/news';
 
 export function useLiveData(profile: Profile, enabled: boolean) {
   const [reading, setReading] = useState<AQReading | null>(null);
+  const [outlook, setOutlook] = useState<HazeOutlook | null>(null);
   const [airError, setAirError] = useState('');
   const [airLoading, setAirLoading] = useState(false);
   const [news, setNews] = useState<NewsFeed | null>(null);
@@ -26,15 +28,16 @@ export function useLiveData(profile: Profile, enabled: boolean) {
     let active = true;
     let request: AbortController | undefined;
     setReading(null);
+    setOutlook(null);
     const refresh = async () => {
       request?.abort();
       const controller = new AbortController(); request = controller;
       setAirLoading(true); setAirError('');
       try {
-        const value = await getCurrentAir(profile, controller.signal);
-        if (active && !controller.signal.aborted) setReading(value);
+        const value = await getHazeOutlook(profile, controller.signal);
+        if (active && !controller.signal.aborted) { setReading(value.reading); setOutlook(value.outlook); }
       } catch (error) {
-        if (active && !controller.signal.aborted) { setReading(null); setAirError(error instanceof Error ? error.message : 'Air quality is unavailable.'); }
+        if (active && !controller.signal.aborted) { setReading(null); setOutlook(null); setAirError(error instanceof Error ? error.message : 'Air quality is unavailable.'); }
       } finally { if (active && !controller.signal.aborted) setAirLoading(false); }
     };
     void refresh();
@@ -63,5 +66,5 @@ export function useLiveData(profile: Profile, enabled: boolean) {
     return () => { active = false; request?.abort(); window.clearInterval(timer); document.removeEventListener('visibilitychange', visibleRefresh); };
   }, [enabled, newsRevision, intervals.newsRefreshIntervalHours]);
 
-  return { reading, airError, airLoading, news, newsError, newsLoading, refreshAir: () => setRevision(n => n + 1), refreshNews: () => setNewsRevision(n => n + 1) };
+  return { reading, outlook, airError, airLoading, news, newsError, newsLoading, refreshAir: () => setRevision(n => n + 1), refreshNews: () => setNewsRevision(n => n + 1) };
 }
