@@ -12,13 +12,16 @@ import { Today } from './Today';
 import { LocationSearch } from './LocationSearch';
 import { backendHistory, backendProfile, isPlanningRequest } from './backend';
 import { useLiveData } from './useLiveData';
+import { SpendingsModal } from './Spendings';
+import { restoredBooking } from './spendingTypes';
+import { useSpendings } from './useSpendings';
 
 const PLANS_KEY = 'haze-sentinel-mobile-plans-v1';
 const INTRO_KEY = 'haze-sentinel-introduction';
 function readPlans(): Plan[] {
   try {
     const raw: unknown = JSON.parse(localStorage.getItem(PLANS_KEY) || 'null');
-    if (Array.isArray(raw) && raw.every(p => p && typeof p.id === 'string' && typeof p.title === 'string' && typeof p.location === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(p.date) && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(p.time) && Number.isFinite(p.api) && [30, 60, 90, 120].includes(p.duration) && typeof p.outdoor === 'boolean' && typeof p.fixed === 'boolean' && ['run', 'class', 'coffee', 'cycle', 'other'].includes(p.kind))) return raw;
+    if (Array.isArray(raw) && raw.every(p => p && typeof p.id === 'string' && typeof p.title === 'string' && typeof p.location === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(p.date) && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(p.time) && Number.isFinite(p.api) && [30, 60, 90, 120].includes(p.duration) && typeof p.outdoor === 'boolean' && typeof p.fixed === 'boolean' && ['run', 'class', 'coffee', 'cycle', 'other'].includes(p.kind))) return raw.map(p => ({ ...p, booking: restoredBooking(p.booking) }));
   } catch { /* Recover from unavailable storage or invalid data. */ }
   return initialPlans.map(p => ({ ...p }));
 }
@@ -26,6 +29,9 @@ function initialPage(): Page { const route = window.location.hash.slice(1); retu
 function needsIntro() { try { return !localStorage.getItem(INTRO_KEY) && !window.location.hash; } catch { return !window.location.hash; } }
 
 export default function App() {
+  const [spendingsOpen, setSpendingsOpen] = useState(false);
+  const [spendingId, setSpendingId] = useState<string | undefined>();
+  const [bookingEditor, setBookingEditor] = useState<string | undefined>();
   const [page, setPage] = useState<Page>(initialPage);
   const [onboarding, setOnboarding] = useState(needsIntro);
   const [plans, setPlans] = useState<Plan[]>(readPlans);
@@ -47,6 +53,8 @@ export default function App() {
   const locateRequest = useRef<AbortController | null>(null);
   const apiProfile = backendProfile(profile, station);
   const live = useLiveData(apiProfile, !onboarding && page !== 'login' && page !== 'signup');
+  const spendings = useSpendings(plans, !onboarding && page !== 'login' && page !== 'signup');
+  const openSpendings = (id?: string) => { setSpendingId(id); setSpendingsOpen(true); };
   const notify = (message: string) => setToast(message);
   useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(''), 4200); return () => clearTimeout(timer); }, [toast]);
   useEffect(() => () => { request.current?.abort(); locateRequest.current?.abort(); }, []);
@@ -115,11 +123,12 @@ export default function App() {
     <header className="app-topbar"><button className="brand-button" onClick={() => navigate('home')} aria-label="Haze Sentinel today"><Brand/></button><div className="topbar-actions"><button className="icon-button notification-button" aria-label="View affected plans" onClick={() => setAffectedOpen(true)}><Bell size={20} strokeWidth={1.5}/>{affected.length > 0 && <i/>}</button><button className="top-avatar" onClick={() => navigate('profile')} aria-label="Open profile">{profile.name === 'Guest' ? <UserRound size={16}/> : profile.name.slice(0, 1)}</button></div></header>
     <div className="demo-banner"><span/>{page === 'schedule' ? 'Demo schedule' : live.airLoading ? 'Loading air quality' : live.reading ? 'WAQI provider data' : 'Air quality unavailable'}<span className="demo-banner-detail">Schedule &amp; replanning use demo data</span></div>
     <main className={'page-content ' + page}>
-      {page === 'home' && <Today key={profile.location} location={profile.location} plans={plans} onLocation={() => setLocationOpen(true)} onAffected={() => setAffectedOpen(true)} reading={live.reading} loading={live.airLoading} error={live.airError} onRefresh={live.refreshAir} news={live.news} newsLoading={live.newsLoading} newsError={live.newsError} onRefreshNews={live.refreshNews}/>}
-      {page === 'schedule' && <Schedule plans={plans} location={profile.location} onChange={changePlans} onChat={openChat} notify={notify}/>}
+      {page === 'home' && <Today key={profile.location} spendings={spendings} onSpendings={() => openSpendings()} location={profile.location} plans={plans} onLocation={() => setLocationOpen(true)} onAffected={() => setAffectedOpen(true)} reading={live.reading} loading={live.airLoading} error={live.airError} onRefresh={live.refreshAir} news={live.news} newsLoading={live.newsLoading} newsError={live.newsError} onRefreshNews={live.refreshNews}/>}
+      {page === 'schedule' && <Schedule spendings={spendings} onSpendings={openSpendings} bookingEditor={bookingEditor} onBookingEditorOpened={() => setBookingEditor(undefined)} plans={plans} location={profile.location} onChange={changePlans} onChat={openChat} notify={notify}/>}
       {page === 'assistant' && <Assistant plans={plans} messages={messages} busy={busy} onSend={send} onRetry={message => { void send(message.retryText || '', message); }} onClear={clearChat} onReview={review}/>}
       {page === 'profile' && <Profile profile={profile} onSave={setProfile} onLocation={() => setLocationOpen(true)} onNavigate={navigate} notify={notify} onReplay={() => setOnboarding(true)}/>}
     </main>
+    {spendingsOpen && <SpendingsModal plans={plans} state={spendings} initialId={spendingId} onClose={() => setSpendingsOpen(false)} onAdd={() => { setSpendingsOpen(false); setBookingEditor('new'); navigate('schedule'); }} onEdit={id => { setSpendingsOpen(false); setBookingEditor(id); navigate('schedule'); }}/>}
     <nav className="bottom-nav" aria-label="Main navigation">{[{ page: 'home' as const, title: 'Today', icon: House }, { page: 'schedule' as const, title: 'Schedule', icon: CalendarDays }, { page: 'assistant' as const, title: 'Assistant', icon: MessageCircle }, { page: 'profile' as const, title: 'Profile', icon: UserRound }].map(({ page: target, title, icon: Icon }) => <button key={target} className={page === target ? 'active' : ''} aria-current={page === target ? 'page' : undefined} onClick={() => navigate(target)}><span><Icon size={21} strokeWidth={1.6}/></span>{title}</button>)}</nav>
     {toast && <div className="toast" role="status"><Check size={17}/><span>{toast}</span><button className="icon-button" aria-label="Dismiss notification" onClick={() => setToast('')}><X size={17}/></button></div>}
     {locationOpen && <Modal title="Find your little corner" onClose={() => { locateRequest.current?.abort(); setLocating(false); setLocationOpen(false); }}><LocationSearch location={profile.location} onSelect={chooseLocation} onLocate={locate} locating={locating}/></Modal>}

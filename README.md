@@ -87,3 +87,17 @@ Unit tests use mocked provider and model responses. NewsData.io articles are hel
 - [Malaysia MOH haze health advice](https://www.moh.gov.my/en/core/health-information/jerebu/artikel-dan-panduan-pengguna-berkaitan-jerebu/panduan-kesihatan-untuk-anda)
 - [Department of Environment explanation of Malaysia API](https://www.doe.gov.my/2021/10/04/english-air-pollutant-index-api/)
 
+## Spendings
+
+Optional booking details can now be added to an activity in the original Schedule
+editor. Today and Schedule include a Spendings card that opens booking exposure,
+location-specific forecast checks and cash comparisons for proceeding, relocating,
+rescheduling and cancelling. Only feasible options with confirmed costs receive
+the minimum-cost highlight; events remain scheduled until you change them yourself.
+
+The additive `POST /api/spendings/assess` route handles validation, forecast lookup
+and calculations. Activities and booking terms continue using the existing local
+browser storage. Exact-hour forecasts and forecast issue timestamps are unavailable
+from the current feed and are shown as such. See [Spendings behavior and API](docs/spendings.md)
+for costs, feasibility rules, persistence, limits and checks.
+
