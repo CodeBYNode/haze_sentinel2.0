@@ -28,7 +28,7 @@ export function LocationSearch({ location, onSelect, onLocate, locating }: { loc
     setLookingUp(true); setError('');
     try {
       const reading = await getCurrentAir({ ageGroup: 'prefer', health: [], other: '', location: city, language: 'en', guest: true }, controller.signal);
-      if (!controller.signal.aborted) onSelect({ name: reading.station || city, stationId: '', coordinates: reading.coordinates?.lat != null && reading.coordinates?.lon != null ? { lat: reading.coordinates.lat, lon: reading.coordinates.lon } : null, aqi: reading.aqi ?? null });
+      if (!controller.signal.aborted) onSelect({ name: reading.station || city, stationId: reading.stationId || '', coordinates: reading.coordinates?.lat != null && reading.coordinates?.lon != null ? { lat: reading.coordinates.lat, lon: reading.coordinates.lon } : null, aqi: reading.aqi ?? null });
     } catch (error) { if (!controller.signal.aborted) setError(error instanceof Error ? error.message : 'City lookup is unavailable.'); }
     finally { if (!controller.signal.aborted) setLookingUp(false); }
   };

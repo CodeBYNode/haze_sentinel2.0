@@ -20,6 +20,15 @@ describe('air-quality API client', () => {
     expect((await searchStations('Kuala Lumpur'))[0].stationId).toBe('42');
   });
 
+  it('retains the provider-resolved station ID when looking up a city', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ reading: { stationId: '5780', station: 'Kuala Lumpur', aqi: 72, pollutants: {}, demo: false } })));
+    vi.stubGlobal('fetch', fetchMock);
+    const result = await getCurrentAir(profile);
+    expect(fetchMock.mock.calls[0]).toEqual(['/api/air-quality?location=Kuala+Lumpur', { signal: undefined, cache: 'no-store' }]);
+    expect(result.stationId).toBe('5780');
+    expect(result.station).toBe('Kuala Lumpur');
+  });
+
   it('surfaces backend failures rather than substituting demo measurements', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'Provider unavailable' }), { status: 502 })));
     await expect(getCurrentAir(profile)).rejects.toThrow('Provider unavailable');

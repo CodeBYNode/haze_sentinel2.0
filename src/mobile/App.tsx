@@ -109,7 +109,7 @@ export default function App() {
         if (!controller.signal.aborted) {
           const coordinates = reading.coordinates?.lat != null && reading.coordinates?.lon != null ? { lat: reading.coordinates.lat, lon: reading.coordinates.lon } : null;
           if (!reading.station || !coordinates) throw new Error('The provider returned no station coordinates. Choose a station manually.');
-          chooseLocation({ name: reading.station, stationId: '', coordinates, aqi: reading.aqi ?? null });
+          chooseLocation({ name: reading.station, stationId: reading.stationId || '', coordinates, aqi: reading.aqi ?? null });
           notify('Provider monitoring station selected.');
         }
       } catch (error) { if (!controller.signal.aborted) { notify(error instanceof Error ? error.message : 'Station lookup failed.'); setLocationOpen(true); } }

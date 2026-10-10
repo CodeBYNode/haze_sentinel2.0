@@ -1,10 +1,14 @@
 import {createServer} from 'node:http';
 import {WaqiService,WaqiError} from './lib/waqi.mjs';
+import {createAirQualityHandler} from './lib/air-quality.mjs';
+import {createLocationSearchHandler} from './lib/locations.mjs';
 import {NewsDataService} from './lib/newsdata.mjs';
 import {assessTomorrow} from './lib/assessment.mjs';
 import {chatWithOpenRouter,OpenRouterError} from './lib/openrouter.mjs';
 import {handleSpendings} from './spendings.mjs';
 const port=Number(process.env.API_PORT||8787),waqi=new WaqiService(),news=new NewsDataService();
+const handleAirQuality=createAirQualityHandler({waqi});
+const handleLocationSearch=createLocationSearchHandler({waqi});
 const positiveNumber=(raw,fallback)=>Number.isFinite(Number(raw))&&Number(raw)>0?Number(raw):fallback;
 const hazeRefreshIntervalMinutes=positiveNumber(process.env.HAZE_REFRESH_INTERVAL_MINUTES,10);
 const newsRefreshIntervalHours=positiveNumber(process.env.NEWS_REFRESH_INTERVAL_HOURS,3);
@@ -19,8 +23,8 @@ const server=createServer(async(req,res)=>{
  if(req.method==='GET'&&url.pathname==='/api/health')return json(res,200,{ok:true,waqiConfigured:Boolean(process.env.WAQI_API_TOKEN?.trim()),newsConfigured:Boolean(process.env.NEWSDATA_API_KEY?.trim()),openRouterConfigured:Boolean(process.env.OPENROUTER_API_KEY?.trim()&&process.env.OPENROUTER_MODEL?.trim())});
  if(req.method==='GET'&&url.pathname==='/api/config')return json(res,200,{hazeRefreshIntervalMinutes,newsRefreshIntervalHours});
  if(req.method==='GET'&&url.pathname==='/api/news')return json(res,200,await news.get());
- if(req.method==='GET'&&url.pathname==='/api/locations/search'){try{return json(res,200,{locations:await waqi.search(url.searchParams.get('q')||'')})}catch(e){return json(res,e instanceof WaqiError&&e.code==='missing_config'?503:502,{error:e.message,code:e.code||'upstream'})}}
- if(req.method==='GET'&&url.pathname==='/api/air-quality'){try{const reading=await waqi.feed({stationId:url.searchParams.get('stationId')||'',lat:url.searchParams.has('lat')?Number(url.searchParams.get('lat')):undefined,lon:url.searchParams.has('lon')?Number(url.searchParams.get('lon')):undefined,location:url.searchParams.get('location')||''});return json(res,200,{reading})}catch(e){return json(res,e instanceof WaqiError&&e.code==='missing_config'?503:e.code==='not_found'||e.code==='unsupported_location'?404:502,{error:e.message,code:e.code||'upstream'})}}
+ if(url.pathname==='/api/locations/search')return await handleLocationSearch(req,res);
+ if(url.pathname==='/api/air-quality')return await handleAirQuality(req,res);
  if(req.method==='POST'&&(url.pathname==='/api/assessment/tomorrow'||url.pathname==='/api/chat')){
   let body;try{body=await jsonBody(req)}catch{return json(res,400,{error:'Request body must be valid JSON and under 160 KB.'})}
   if(!body||typeof body!=='object'||Array.isArray(body))return json(res,400,{error:'Request body must be a JSON object.'});

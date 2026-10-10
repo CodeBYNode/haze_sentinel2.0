@@ -19,7 +19,7 @@ export async function getCurrentAir(profile: Profile, signal?: AbortSignal): Pro
   else if (profile.locationCoords) { q.set('lat', String(profile.locationCoords.lat)); q.set('lon', String(profile.locationCoords.lon)); }
   else q.set('location', profile.location);
   const body = await message(await fetch('/api/air-quality?' + q.toString(), { signal, cache: 'no-store' }));
-  return { ...normalizeReading(body.reading), stationId: profile.stationId };
+  return { ...normalizeReading(body.reading), stationId: body.reading.stationId || profile.stationId };
 }
 export async function searchStations(query: string, signal?: AbortSignal): Promise<StationOption[]> {
   const body = await message(await fetch('/api/locations/search?q=' + encodeURIComponent(query), { signal, cache: 'no-store' }));
