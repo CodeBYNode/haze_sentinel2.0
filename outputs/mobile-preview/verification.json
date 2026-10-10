@@ -1,0 +1,24 @@
+{
+  "checks": [
+    "Three-step onboarding and relevant vector illustration",
+    "Today includes current API, arrival/relief, map and affected plans",
+    "Prediction opens transparent, dated news sources; Escape closes the sheet",
+    "Map selection and zoom work without replacing the home city",
+    "Affected-plan bar opens the review list and Schedule",
+    "Add, persist, edit and delete an activity through sheets",
+    "Schedule AI opens on icon tap and waits for proposal confirmation",
+    "Assistant has icon prompts, chat input, and a working new conversation",
+    "Profile, notifications, optional health and privacy controls",
+    "Email login, registration and guest routes do not fake authentication",
+    "Location selector updates conditions; light appearance survives a dark system setting",
+    "No horizontal page overflow at 320, 375, 390, 430 and 768 pixels"
+  ],
+  "runtimeErrors": [],
+  "widths": [
+    320,
+    375,
+    390,
+    430,
+    768
+  ]
+}
