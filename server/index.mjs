@@ -3,6 +3,7 @@ import {WaqiService,WaqiError} from './lib/waqi.mjs';
 import {NewsDataService} from './lib/newsdata.mjs';
 import {assessTomorrow} from './lib/assessment.mjs';
 import {chatWithOpenRouter,OpenRouterError} from './lib/openrouter.mjs';
+import {handleSpendings} from './spendings.mjs';
 const port=Number(process.env.API_PORT||8787),waqi=new WaqiService(),news=new NewsDataService();
 const positiveNumber=(raw,fallback)=>Number.isFinite(Number(raw))&&Number(raw)>0?Number(raw):fallback;
 const hazeRefreshIntervalMinutes=positiveNumber(process.env.HAZE_REFRESH_INTERVAL_MINUTES,10);
@@ -14,6 +15,7 @@ const jsonBody=async req=>{let raw='';for await(const part of req){raw+=part;if(
 const server=createServer(async(req,res)=>{
  try{
  let url;try{url=new URL(req.url||'/','http://'+(req.headers.host||'localhost'))}catch{return json(res,400,{error:'Invalid request URL.'})}
+ if(req.method==='POST'&&url.pathname==='/api/spendings/assess')return await handleSpendings(req,res,{waqi,jsonBody,json});
  if(req.method==='GET'&&url.pathname==='/api/health')return json(res,200,{ok:true,waqiConfigured:Boolean(process.env.WAQI_API_TOKEN?.trim()),newsConfigured:Boolean(process.env.NEWSDATA_API_KEY?.trim()),openRouterConfigured:Boolean(process.env.OPENROUTER_API_KEY?.trim()&&process.env.OPENROUTER_MODEL?.trim())});
  if(req.method==='GET'&&url.pathname==='/api/config')return json(res,200,{hazeRefreshIntervalMinutes,newsRefreshIntervalHours});
  if(req.method==='GET'&&url.pathname==='/api/news')return json(res,200,await news.get());

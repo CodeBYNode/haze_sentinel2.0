@@ -6,14 +6,17 @@ import type { NewsFeed, NewsArticle } from '../services/news';
 import { BotanicalNote, DemoNote, ExternalLink, Forecast, HazeMap, Modal, SectionTitle } from './Kit';
 import { forecastDays, observationState, timestamp, todayInMalaysia, waqiTone } from './backend';
 
+import { SpendingSummary, type SpendingsState } from './Spendings';
+
 type Props = {
+  spendings?: SpendingsState; onSpendings?: () => void;
   location: string; plans: Plan[]; onLocation: () => void; onAffected: () => void;
   reading: AQReading | null; loading: boolean; error: string; onRefresh: () => void;
   news: NewsFeed | null; newsLoading: boolean; newsError: string; onRefreshNews: () => void;
 };
 const pollutantNames: Record<string, string> = { pm25: 'PM2.5', pm10: 'PM10', o3: 'O₃', no2: 'NO₂', so2: 'SO₂', co: 'CO' };
 
-export function Today({ location, plans, onLocation, onAffected, reading, loading, error, onRefresh, news, newsLoading, newsError, onRefreshNews }: Props) {
+export function Today({ spendings, onSpendings, location, plans, onLocation, onAffected, reading, loading, error, onRefresh, news, newsLoading, newsError, onRefreshNews }: Props) {
   const [sources, setSources] = useState(false);
   const [hourlyDemo, setHourlyDemo] = useState(false);
   const [mapDemo, setMapDemo] = useState(false);
@@ -41,6 +44,7 @@ export function Today({ location, plans, onLocation, onAffected, reading, loadin
     </button>
     <section className="hourly-demo demo-map"><button className="text-button" onClick={() => setMapDemo(value => !value)} aria-expanded={mapDemo}>{mapDemo ? 'Hide' : 'Explore'} nearby map demo<ChevronDown size={15}/></button>{mapDemo && <><DemoNote>Demo map · 10 October 2026 · the backend has no nearby-station map feed</DemoNote><HazeMap selected={demoCity} onSelect={setDemoCity} located={false} onLocate={onLocation}/></>}</section>
     <button className={'affected-bar' + (!affected.length ? ' clear' : '')} onClick={onAffected}><span className="affected-icon"><CalendarClock size={20}/></span><span><strong>{affected.length ? `${affected.length} demo plans may be affected` : 'Review your demo plans'}</strong><small>Schedule uses sample readings · independent of live AQI</small></span><ChevronRight size={19}/></button>
+    {spendings && onSpendings && <SpendingSummary plans={plans} state={spendings} onOpen={onSpendings}/>}
     <section className="station-card"><SectionTitle detail="Station returned by the air-quality provider">Monitoring station</SectionTitle><div className="station-summary"><MapPin size={25}/><div><strong>{reading?.station || 'Unavailable'}</strong><p>{reading?.coordinates?.lat != null && reading?.coordinates?.lon != null ? `${reading.coordinates.lat.toFixed(4)}° N, ${reading.coordinates.lon.toFixed(4)}° E` : 'Station coordinates unavailable'}</p></div></div>{reading?.stationUrl && <ExternalLink href={reading.stationUrl}>View this station on WAQI</ExternalLink>}</section>
     <section className="forecast-section"><SectionTitle detail="WAQI model forecast · daily values">The days ahead</SectionTitle>
       {daily.length ? <div className="daily-forecast">{daily.map(row => <article key={row.day + row.pollutant}><div><strong>{dateLabel(row.day, true)}</strong><span>{pollutantNames[row.pollutant] || row.pollutant.toUpperCase()}{row.pollutant === 'uvi' ? ' · UV index' : ' · forecast index'}</span></div><dl><div><dt>Min</dt><dd>{row.min}</dd></div><div><dt>Average</dt><dd>{row.avg}</dd></div><div><dt>Max</dt><dd>{row.max}</dd></div></dl></article>)}</div> : <p className="body-copy">No daily forecast returned for this station. Check again later or choose another station.</p>}

@@ -1,7 +1,9 @@
+import type { BookingDetails } from '../core/spendings';
 export type Page = 'home' | 'schedule' | 'assistant' | 'profile' | 'login' | 'signup';
 export type Severity = 'safe' | 'mild' | 'moderate' | 'severe' | 'hazardous';
 export type Plan = {
   id: string; title: string; date: string; time: string; duration: number;
+  booking?: BookingDetails;
   location: string; outdoor: boolean; api: number; fixed: boolean; kind: 'run' | 'class' | 'coffee' | 'cycle' | 'other';
 };
 export type Proposal = { id: string; time: string; date: string; location: string; outdoor: boolean; api: number; reason: string };
