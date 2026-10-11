@@ -1,11 +1,12 @@
 import type { AQReading, Profile } from '../core/types';
 import type { StationOption } from '../services/airQuality';
 import type { UserProfile } from '../ui/model';
+import { normalizeAgeGroup } from '../../shared/age-guidance.mjs';
 
 export function backendProfile(profile: UserProfile, station?: StationOption | null): Profile {
   const healthCodes: Record<string, string> = { Asthma: 'asthma', 'Respiratory sensitivity': 'lung', 'Heart condition': 'heart' };
   return {
-    ageGroup: 'prefer', health: profile.conditions.flatMap(c => healthCodes[c] ? [healthCodes[c]] : []),
+    ageGroup: normalizeAgeGroup(profile.ageGroup), health: profile.conditions.flatMap(c => healthCodes[c] ? [healthCodes[c]] : []),
     other: '', location: profile.location, language: 'en', guest: true,
     ...(station?.name === profile.location ? { stationId: String(station.stationId), locationCoords: station.coordinates || undefined } : {}),
   };

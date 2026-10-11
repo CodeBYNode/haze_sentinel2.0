@@ -2,6 +2,7 @@ import { WaqiService, WaqiError } from './waqi.mjs';
 import { NewsDataService } from './newsdata.mjs';
 import { assessTomorrow } from './assessment.mjs';
 import { chatWithOpenRouter, OpenRouterError } from './openrouter.mjs';
+import { normalizeAgeGroup, ageActivityGuidance } from '../../shared/age-guidance.mjs';
 
 const BODY_LIMIT = 160000;
 const send = (res, status, payload, headers = {}) => {
@@ -9,7 +10,7 @@ const send = (res, status, payload, headers = {}) => {
   res.end(JSON.stringify(payload));
 };
 const safeProfile = p => ({
-  ageGroup: ['under-5', '5-17', '18-64', '65-plus', 'prefer'].includes(p?.ageGroup) ? p.ageGroup : 'prefer',
+  ageGroup: normalizeAgeGroup(p?.ageGroup),
   health: Array.isArray(p?.health) ? p.health.filter(x => ['pregnant', 'disability', 'asthma', 'lung', 'heart'].includes(x)) : [],
   otherConsideration: Boolean(String(p?.other || '').trim()),
   location: String(p?.location || '').trim().slice(0, 120),
@@ -63,6 +64,7 @@ export function createChatHandler({ waqi = new WaqiService(), news = new NewsDat
           articles: snapshot.articles.slice(0, 8).map(a => ({ title: a.title, publisher: a.publisher, published_at: a.publishedAt, description: a.description, url: a.url, sources: a.sources })),
         },
         personal_context: { age_group: profile.ageGroup, disclosed_factors: profile.health, other_consideration_disclosed: profile.otherConsideration },
+        age_activity_guidance: ageActivityGuidance(profile.ageGroup, reading),
       };
       try {
         const reply = await chat({ messages, context, language: body.language });

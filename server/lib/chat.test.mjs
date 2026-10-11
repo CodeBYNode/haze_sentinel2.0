@@ -37,6 +37,14 @@ async function invoke(handler, body = requestBody, method = 'POST', chunks) {
 }
 
 describe('OpenRouter chat HTTP endpoints', () => {
+  it('passes the selected child age group and cautious current-activity guidance to the model', async () => {
+    const { handler, requests } = setup();
+    const result = await invoke(handler, { ...requestBody, profile: { ...requestBody.profile, ageGroup: 'under-18' } });
+    assert.equal(result.status, 200); assert.equal(requests[0].context.personal_context.age_group, 'under-18');
+    assert.equal(requests[0].context.age_activity_guidance.extraCaution, true);
+    assert.match(requests[0].context.age_activity_guidance.advice, /short and gentle/);
+    assert.equal(requests[0].context.current_observation.aqi, 99);
+  });
   it('exports both Vercel entrypoints without starting a server', () => {
     assert.equal(typeof chatHandler, 'function');
     assert.equal(typeof tomorrowHandler, 'function');

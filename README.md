@@ -29,6 +29,20 @@ The mobile frontend always requests the backend for supported data. Provider fai
 
 ## Storage and location
 
+Profile → Age group opens an optional page with Under 18, 18–64, 65+, and Prefer
+not to say. The choice stays in session memory, is included in profile export,
+and is reset by Clear profile. No exact age or birth date is collected.
+Under-18s and adults 65+ receive more cautious haze advice and outdoor activity
+suggestions on Today and in the backend Assistant. Prefer not to say uses general
+guidance without assuming age sensitivity. Health conditions remain separate.
+The shared rules in `shared/age-guidance.mjs` change advice only, never AQI or
+forecast values, and withhold a current-conditions assessment for stale/missing
+readings. Age choice and selected health conditions are sent with air-quality
+questions; name, email and free-text notes remain excluded. The Schedule demo
+and its sample readings remain separate from this current-condition guidance.
+See [AirNow's smoke readiness guidance](https://www.airnow.gov/wildfires/be-smoke-ready/)
+for the greater sensitivity of children and older adults.
+
 Activities and onboarding progress are stored in browser local storage, with fallback handling when storage is unavailable. Profile and health preferences are held only in memory. Selected health conditions and station context are sent with backend assistant questions; name, email and free-text notes are excluded. Profile clearing does not delete activities.
 
 Location uses backend station search. When search returns no results, a city can be selected through `/api/air-quality?location=...`. Device geolocation is requested only on user action and sent to the backend coordinate feed. The returned station coordinates, rather than precise device coordinates, are retained for this session.

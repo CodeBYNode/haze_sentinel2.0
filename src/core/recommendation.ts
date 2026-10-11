@@ -2,7 +2,7 @@ import type { Activity, AQReading, Assessment, Profile } from './types';
 
 /** Intentionally unconfigured until an authoritative policy and provider scale are supplied. */
 export type SafetyPolicy = { maxAgeMinutes?: number; categories: Record<string, 'GO' | 'CAUTION' | 'AVOID'>; highIntensity: Activity[]; vulnerableGroups: string[] };
-export const defaultPolicy: SafetyPolicy = { maxAgeMinutes: 120, categories: {}, highIntensity: ['football','jogging','cycling','exercise'], vulnerableGroups: ['under-5','65-plus'] };
+export const defaultPolicy: SafetyPolicy = { maxAgeMinutes: 120, categories: {}, highIntensity: ['football','jogging','cycling','exercise'], vulnerableGroups: ['under-18','under-5','5-17','65-plus'] };
 export function assessOutdoor(reading: AQReading | null, profile: Profile, activity: Activity, now = Date.now(), policy = defaultPolicy): Assessment {
   const limitations: string[] = [];
   if (!reading) return { decision:'UNABLE', reasonCodes:['data-unavailable'], summary:'I can’t confidently assess conditions right now.', rationale:'Air-quality data is unavailable for this location.', alternative:'Try again later or check local official guidance.', limitations:['No air-quality reading'] };

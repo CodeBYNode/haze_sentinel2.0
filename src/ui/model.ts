@@ -1,4 +1,5 @@
 import type { BookingDetails } from '../core/spendings';
+import type { AgeGroup } from '../../shared/age-guidance.mjs';
 export type Page = 'home' | 'schedule' | 'assistant' | 'profile' | 'login' | 'signup';
 export type Severity = 'safe' | 'mild' | 'moderate' | 'severe' | 'hazardous';
 export type Plan = {
@@ -7,7 +8,7 @@ export type Plan = {
   location: string; outdoor: boolean; api: number; fixed: boolean; kind: 'run' | 'class' | 'coffee' | 'cycle' | 'other';
 };
 export type Proposal = { id: string; time: string; date: string; location: string; outdoor: boolean; api: number; reason: string };
-export type UserProfile = { name: string; email: string; location: string; conditions: string[]; notes: string; alerts: boolean; reminders: boolean; summary: boolean };
+export type UserProfile = { name: string; email: string; location: string; ageGroup?: AgeGroup; conditions: string[]; notes: string; alerts: boolean; reminders: boolean; summary: boolean };
 export const TODAY = '2026-10-10';
 export const TOMORROW = '2026-10-11';
 export const SAMPLE_TIME = '12:00 PM MYT';
@@ -34,7 +35,7 @@ export const initialPlans: Plan[] = [
   { id: 'cycle', title: 'Evening cycling', date: TODAY, time: '18:00', duration: 60, location: 'Perdana Botanical Gardens', outdoor: true, api: 142, fixed: false, kind: 'cycle' },
   { id: 'study', title: 'Study session', date: TOMORROW, time: '10:00', duration: 120, location: 'Raja Tun Uda Library', outdoor: false, api: 54, fixed: false, kind: 'class' },
 ];
-export const defaultProfile: UserProfile = { name: 'Alex Tan', email: 'alex.tan@example.com', location: 'Kuala Lumpur', conditions: [], notes: '', alerts: true, reminders: true, summary: false };
+export const defaultProfile: UserProfile = { name: 'Alex Tan', email: 'alex.tan@example.com', location: 'Kuala Lumpur', ageGroup: 'prefer', conditions: [], notes: '', alerts: true, reminders: true, summary: false };
 // Malaysian DOE API bands. These labels describe air quality, not personal safety.
 // https://www.doe.gov.my/wp-content/uploads/2021/09/API_Calculation.pdf
 export function severity(api: number): Severity { return api <= 50 ? 'safe' : api <= 100 ? 'mild' : api <= 200 ? 'moderate' : api <= 300 ? 'severe' : 'hazardous'; }

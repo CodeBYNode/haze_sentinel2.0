@@ -3,6 +3,9 @@ import { backendHistory, backendProfile, forecastDays, isPlanningRequest, observ
 import { defaultProfile } from '../ui/model';
 
 describe('mobile backend integration boundaries', () => {
+  it('sends the selected age group to the backend instead of always preferring not to say', () => {
+    for (const ageGroup of ['under-18', '18-64', '65-plus', 'prefer'] as const) expect(backendProfile({ ...defaultProfile, ageGroup }).ageGroup).toBe(ageGroup);
+  });
   it('maps optional health choices without sending identity or private notes', () => {
     const result = backendProfile({ ...defaultProfile, conditions: ['Asthma', 'Respiratory sensitivity', 'Heart condition'], notes: 'Private note' }, { name: 'Kuala Lumpur', stationId: '123', coordinates: { lat: 3, lon: 101 }, aqi: null });
     expect(result.health).toEqual(['asthma', 'lung', 'heart']);

@@ -3,6 +3,7 @@ import { CalendarClock, ChevronDown, ChevronRight, CloudSun, FileText, Info, Map
 import { affectedPlans, dateLabel, type Plan } from '../ui/model';
 import type { AQReading } from '../core/types';
 import type { HazeOutlook } from '../core/outlook';
+import { ageActivityGuidance, type AgeGroup } from '../../shared/age-guidance.mjs';
 import type { NewsFeed, NewsArticle } from '../services/news';
 import { BotanicalNote, DemoNote, ExternalLink, Forecast, HazeMap, Modal, SectionTitle } from './Kit';
 import { forecastDays, observationState, timestamp, todayInMalaysia, waqiTone } from './backend';
@@ -14,11 +15,12 @@ type Props = {
   location: string; plans: Plan[]; onLocation: () => void; onAffected: () => void;
   reading: AQReading | null; loading: boolean; error: string; onRefresh: () => void;
   outlook?: HazeOutlook | null; outlookLoading?: boolean; outlookError?: string;
+  ageGroup?: AgeGroup;
   news: NewsFeed | null; newsLoading: boolean; newsError: string; onRefreshNews: () => void;
 };
 const pollutantNames: Record<string, string> = { pm25: 'PM2.5', pm10: 'PM10', o3: 'O₃', no2: 'NO₂', so2: 'SO₂', co: 'CO' };
 
-export function Today({ spendings, onSpendings, location, plans, onLocation, onAffected, reading, outlook, outlookLoading = false, outlookError = '', loading, error, onRefresh, news, newsLoading, newsError, onRefreshNews }: Props) {
+export function Today({ spendings, onSpendings, location, plans, onLocation, onAffected, reading, ageGroup, outlook, outlookLoading = false, outlookError = '', loading, error, onRefresh, news, newsLoading, newsError, onRefreshNews }: Props) {
   const [sources, setSources] = useState(false);
   const [hourlyDemo, setHourlyDemo] = useState(false);
   const [mapDemo, setMapDemo] = useState(false);
@@ -28,6 +30,7 @@ export function Today({ spendings, onSpendings, location, plans, onLocation, onA
   const daily = allForecasts.filter(row => row.day >= todayInMalaysia());
   const outlookTitles = { easing: 'Reports suggest easing', worsening: 'Reports warn of persistent haze', mixed: 'Reports suggest a mixed outlook', unknown: 'Outlook unavailable' };
   const roughOutlook = outlook?.confidence === 'very_low';
+  const ageAdvice = ageActivityGuidance(ageGroup, error ? null : reading);
   const estimateLabel = (event: HazeOutlook['alleviation'] | undefined) => event?.expected === true ? event.timeframe?.label || 'Timing unavailable'
     : 'Cannot estimate';
   return <div className="today-page">
@@ -41,6 +44,7 @@ export function Today({ spendings, onSpendings, location, plans, onLocation, onA
         <div className="live-pollutants">{Object.entries(pollutantNames).map(([key, label]) => <div key={key}><span>{label}</span><strong>{reading?.pollutants?.[key] ?? '—'}</strong></div>)}</div>
         <p className="fine-print">Pollutant values are WAQI individual indices, not µg/m³. Dominant pollutant: {pollutantNames[reading?.dominantPollutant || ''] || reading?.dominantPollutant || 'unavailable'}.</p>
       </>}
+      <div className="age-advice" aria-label="Age-based outdoor activity advice"><strong>{ageAdvice.label}</strong><p>{ageAdvice.advice}</p><p>{ageAdvice.outdoorSuggestion}</p><small>Age-based guidance · health conditions may call for extra caution.</small></div>
       <button className="text-button" onClick={() => setSources(true)}><FileText size={14}/> Data source &amp; attribution</button>
     </section>
     <button className="outlook-card" onClick={() => setSources(true)} aria-label="View haze outlook and its sources">
