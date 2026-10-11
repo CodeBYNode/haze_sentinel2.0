@@ -1,6 +1,8 @@
 import type { AQReading, Profile } from '../core/types';
 import type { HazeOutlook } from '../core/outlook';
 import type { NewsFeed } from './news';
+import { hasUsableOutlook, isOutlookResponse, outlookLocationKey } from '../../shared/outlook-cache.mjs';
+import { hazeOutlookCache } from './outlookCache';
 export type StationOption = { name: string; stationId: string; coordinates: { lat: number; lon: number } | null; aqi: number | null };
 export type RefreshIntervals = { hazeRefreshIntervalMinutes: number; newsRefreshIntervalHours: number };
 export type BackendReading = Omit<AQReading, 'scale' | 'location'> & { indexName?: string };
@@ -27,11 +29,27 @@ export async function getCurrentAir(profile: Profile, signal?: AbortSignal): Pro
   return { ...normalizeReading(body.reading), stationId: body.reading.stationId || profile.stationId };
 }
 export async function getHazeOutlook(profile: Profile, signal?: AbortSignal): Promise<{ outlook: HazeOutlook; news: NewsFeed }> {
-  const body = await message(await fetch('/api/haze-outlook?' + new URLSearchParams({ location: profile.location }), { signal, cache: 'no-store' }));
-  const outlook = body.outlook;
-  if (!outlook || !['estimated', 'unavailable'].includes(outlook.status) || typeof outlook.summary !== 'string'
-    || !outlook.alleviation || !outlook.anotherWave || !Array.isArray(body.news?.articles)) throw new Error('The server returned an invalid haze outlook.');
-  return { outlook, news: body.news };
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (signal?.aborted) abort();
+  signal?.addEventListener('abort', abort, { once: true });
+  const timeout = setTimeout(abort, 12000);
+  try {
+    const body = await message(await fetch('/api/haze-outlook?' + new URLSearchParams({ location: profile.location }), { signal: controller.signal, cache: 'no-store' }));
+    if (!isOutlookResponse(body) || outlookLocationKey(body.outlook.location) !== outlookLocationKey(profile.location)) throw new Error('The server returned an invalid haze outlook.');
+    if (hasUsableOutlook(body, profile.location)) {
+      hazeOutlookCache.save(body);
+      return body;
+    }
+    return hazeOutlookCache.get(profile.location, body.outlook.reason || 'no_new_prediction') || body;
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    const cached = hazeOutlookCache.get(profile.location, controller.signal.aborted ? 'refresh_timeout' : 'refresh_failed');
+    if (cached) return cached;
+    throw error;
+  } finally {
+    clearTimeout(timeout); signal?.removeEventListener('abort', abort);
+  }
 }
 export async function searchStations(query: string, signal?: AbortSignal): Promise<StationOption[]> {
   const body = await message(await fetch('/api/locations/search?q=' + encodeURIComponent(query), { signal, cache: 'no-store' }));

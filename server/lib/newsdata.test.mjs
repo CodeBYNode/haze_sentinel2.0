@@ -33,6 +33,28 @@ describe('NewsData normalization', () => {
 });
 
 describe('NewsData cache and retrieval', () => {
+  it('follows at most two pages and keeps server credentials out of the URL', async () => {
+    const calls = [];
+    const service = new NewsDataService({ apiKey: 'private-key', queries: ['haze'], maxPages: 2, fetchImpl: async url => {
+      calls.push(url.toString());
+      return Response.json({ status: 'success', nextPage: calls.length === 1 ? 'second-page' : 'third-page',
+        results: [article({ article_id: 'page-' + calls.length, title: calls.length === 1 ? 'Singapore haze' : 'KL haze worsens', link: 'https://publisher.example/page-' + calls.length })] });
+    } });
+    const result = await service.get();
+    assert.equal(calls.length, 2); assert.equal(result.articles.length, 2);
+    assert.equal(new URL(calls[0]).searchParams.has('page'), false);
+    assert.equal(new URL(calls[1]).searchParams.get('page'), 'second-page');
+    assert.ok(!calls.join().includes('private-key'));
+  });
+
+  it('retains first-page reports as a partial feed when a later page fails', async () => {
+    const service = new NewsDataService({ apiKey: 'test-key', queries: ['haze'], maxPages: 2, fetchImpl: async url => {
+      if (url.searchParams.has('page')) throw new Error('page down');
+      return Response.json({ status: 'success', results: [article()], nextPage: 'second-page' });
+    } });
+    const result = await service.get();
+    assert.equal(result.status, 'partial'); assert.equal(result.articles.length, 1); assert.ok(result.error);
+  });
   it('coalesces concurrent refreshes and reuses the three-hour cache', async () => {
     let now = Date.parse('2026-10-10T00:00:00Z'), calls = 0;
     const service = new NewsDataService({ apiKey: 'test-key', intervalHours: 3, now: () => now, fetchImpl: async () => { calls++; await new Promise(resolve => setTimeout(resolve, 5)); return response([article()])(); } });

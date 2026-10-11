@@ -3,10 +3,11 @@ import type { AQReading, Profile } from '../core/types';
 import type { HazeOutlook } from '../core/outlook';
 import { getCurrentAir, getHazeOutlook, getRefreshIntervals } from '../services/airQuality';
 import type { NewsFeed } from '../services/news';
+import { hazeOutlookCache } from '../services/outlookCache';
 
 export function useLiveData(profile: Profile, enabled: boolean) {
   const [reading, setReading] = useState<AQReading | null>(null);
-  const [outlook, setOutlook] = useState<HazeOutlook | null>(null);
+  const [outlook, setOutlook] = useState<HazeOutlook | null>(() => hazeOutlookCache.get(profile.location)?.outlook || null);
   const [airError, setAirError] = useState('');
   const [airLoading, setAirLoading] = useState(false);
   const [news, setNews] = useState<NewsFeed | null>(null);
@@ -50,7 +51,8 @@ export function useLiveData(profile: Profile, enabled: boolean) {
     if (!enabled) return;
     let active = true;
     let request: AbortController | undefined;
-    setOutlook(null); setNews(null);
+    const cached = hazeOutlookCache.get(profile.location);
+    setOutlook(cached?.outlook || null); setNews(cached?.news || null);
     const refresh = async () => {
       request?.abort();
       const controller = new AbortController(); request = controller;

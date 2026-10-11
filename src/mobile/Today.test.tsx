@@ -54,4 +54,14 @@ describe('Today backend rendering', () => {
     expect(html).toContain('Roughly 2–4 days'); expect(html).toContain('Within ~12 hours');
     expect(html).not.toContain('Reports suggest a mixed outlook');
   });
+  it('keeps the saved prediction visible during refresh with its original date and expired windows', () => {
+    const outlook = { status: 'estimated', trend: 'mixed', confidence: 'very_low', summary: 'Last saved estimate.',
+      cache: { status: 'cached', savedAt: '2026-10-11T00:00:00Z' },
+      alleviation: { expected: true, timeframe: { label: '11 Oct 2026 (window ended)' } },
+      anotherWave: { expected: null, timeframe: null } } as HazeOutlook;
+    const html = renderToStaticMarkup(<Today {...base} reading={null} outlook={outlook} outlookLoading/>);
+    expect(html).toContain('Last saved haze outlook'); expect(html).toContain('Cached prediction');
+    expect(html).toContain('Checking for a newer estimate'); expect(html).toContain('window ended');
+    expect(html).not.toContain('Outlook unavailable');
+  });
 });

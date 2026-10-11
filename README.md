@@ -151,11 +151,32 @@ article link, publication time and matched sentence. Persistent/worsening haze
 does not prove a separate incoming plume. This is a rough news-based estimate,
 not a numerical AQI forecast or official advisory; it adds no model dependency.
 
-Missing, stale or insufficient news produces HTTP 200 with
-`outlook.status: "unavailable"` and an explanatory reason. Missing claims stay
-unknown rather than implying no haze. The existing news service coalesces
-concurrent requests and caches the single haze search for the configured news
-refresh interval (default three hours), with a 15-minute failure retry delay.
+The haze search reads up to two NewsData pages so local reports do not disappear
+when newer worldwide headlines push them past the first ten results. A failed
+second page retains first-page articles as a partial feed. Each page has a
+4.5-second timeout; browser outlook requests have a 12-second timeout.
+
+The last usable prediction is saved per location in Vercel Runtime Cache and
+in browser local storage, with in-memory fallbacks when either cache is unavailable.
+Missing, stale or insufficient news, HTTP errors, invalid responses and timeouts
+retain that prediction rather than clearing the card. Valid server-cached results
+also initialize the browser cache. Reloads show the saved prediction immediately
+while checking for an update. New valid predictions replace older ones; unavailable
+responses never overwrite them. API keys and profile/health details are excluded.
+
+Cached predictions retain `status: "estimated"` and include `outlook.cache` with
+`status: "cached"`, original `savedAt`, `servedAt` and fallback `reason`. The UI
+labels them "Last saved haze outlook", shows the save time, and replaces relative
+countdowns with original absolute date windows. Ended windows are marked
+"window ended"; cached estimates are never extended into a new forecast.
+
+The shared cache preserves the three-hour refresh cadence across function restarts
+and deployments; failures retry after fifteen minutes. Cache operations have an
+800 ms limit and cannot prevent serving a prediction. Entries have no explicit
+expiry, but Vercel can evict its regional runtime cache and users can clear browser
+storage. The browser retains up to 32 locations. If a location has never produced
+a usable estimate and neither cache has one, HTTP 200 returns
+`outlook.status: "unavailable"` with a reason. No prediction is invented.
 
 The remaining API routes (news, config, health and spendings) still run on the
 standalone Node server and need their own Vercel functions or a deployed backend
@@ -172,13 +193,20 @@ before those features will work on Vercel.
 - `server/lib/assessment.mjs` uses the WAQI forecast's daily PM2.5/PM10 maximum for tomorrow in `Asia/Kuala_Lumpur`. When tomorrow's forecast is missing, its result is explicitly unknown. The profile changes caution and explanation only; it never changes measurements.
 - `server/lib/openrouter.mjs` sends a bounded conversation and verified current/forecast context to the configured model. It does not receive the free-text health note; it receives only whether one was disclosed. It is instructed to explain, not override, the server's structured result.
 - `/api/chat` includes the latest AQI observation and a non-blocking snapshot of cached, attributed articles. News refreshes never delay AQI reads or block chat when the news service is slow. The model must treat articles as reports, retain links, avoid counting syndication as confirmation, and disclose unavailable/stale news or forecast data.
-- Activities and onboarding progress stay in browser local storage; the mobile profile stays in memory for the session. No cloud sync or authentication is implemented.
+- Activities, onboarding progress and the last available news-based haze outlook per location stay in browser local storage; the mobile profile stays in memory for the session. No account sync or authentication is implemented. The public haze outlook is also held in Vercel Runtime Cache, isolated per project and deployment environment.
 
 WAQI's index and category are identified as WAQI AQI. They are not Malaysia's official API/IPU and are not converted. The daily AQI maximum is a model forecast, not an observation or official Malaysian advisory; it does not imply hour-by-hour conditions. The card links to WAQI and displays source attributions. AQICN's documented public terms prohibit selling or paid-service inclusion and disallow cached/archived redistribution; public for-profit use needs explicit agreement. This MVP does not store historical readings or train a model.
 
 ## Verification and integration limits
 
-Unit tests use mocked provider and model responses. NewsData.io articles are held in process memory only; restarting the API clears the cache and causes the next feed request to refresh. No historical data is retained. No separate weather forecast is added: tomorrow's haze assessment uses WAQI's own AQI forecast only when that station returns a relevant forecast.
+Unit tests use mocked provider and model responses and cover failed refreshes,
+empty news, timeouts, reloads, city isolation, cache failure and recovery. General
+NewsData.io feeds remain in process memory. The last successful haze outlook and
+its attributed source articles are additionally retained in Vercel Runtime Cache
+and browser storage. Vercel cache is regional and ephemeral, so absolute uptime
+cannot be guaranteed. WAQI readings are not cached. No separate weather forecast
+is added: tomorrow's haze assessment uses WAQI's own AQI forecast only when that
+station returns a relevant forecast.
 
 ## References
 

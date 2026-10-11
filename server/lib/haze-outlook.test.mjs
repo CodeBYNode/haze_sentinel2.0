@@ -148,12 +148,84 @@ describe('NewsData haze outlook endpoint', () => {
     assert.equal((await invoke(handler, '/api/haze-outlook', 'POST')).status, 405);
     assert.equal((await invoke(handler, '/api/haze-outlook?location=%3Cscript%3E')).status, 400);
     assert.equal(calls, 0);
-    const failed = await invoke(handler); assert.equal(failed.status, 502); assert.ok(!JSON.stringify(failed).includes('private detail'));
+    const failed = await invoke(handler); assert.equal(failed.status, 200); assert.equal(failed.body.outlook.status, 'unavailable'); assert.ok(!JSON.stringify(failed).includes('private detail'));
   });
   it('returns unknown outlook for missing configuration without requesting a provider', async () => {
     const news = createHazeNewsService({ apiKey: '', fetchImpl: async () => { throw new Error('must not call'); } });
     const response = await invoke(createHazeOutlookHandler({ news, now: () => now }));
     assert.equal(response.status, 200); assert.equal(response.body.outlook.reason, 'news_unavailable');
     assert.match(response.body.outlook.summary, /NEWSDATA_API_KEY/);
+  });
+
+  it('retains a good prediction through empty news, stale news and provider exceptions', async () => {
+    let time = now;
+    let result = feed([article('KL haze may ease tomorrow')]);
+    const handler = createHazeOutlookHandler({ news: { get: async () => {
+      if (result instanceof Error) throw result;
+      return result;
+    } }, now: () => time });
+    const first = (await invoke(handler)).body;
+    for (const failure of [feed([]), { ...feed([]), stale: true }, new Error('private error')]) {
+      result = failure; time = new Date('2026-10-13T00:00:00Z');
+      const response = await invoke(handler);
+      assert.equal(response.status, 200);
+      assert.equal(response.body.outlook.status, 'estimated');
+      assert.equal(response.body.outlook.cache.status, 'cached');
+      assert.equal(response.body.outlook.generatedAt, first.outlook.generatedAt);
+      assert.equal(response.body.outlook.alleviation.timeframe.end, first.outlook.alleviation.timeframe.end);
+      assert.match(response.body.outlook.alleviation.timeframe.label, /window ended/);
+      assert.ok(!response.body.outlook.summary.includes('tomorrow'));
+      assert.ok(!JSON.stringify(response.body).includes('private error'));
+    }
+  });
+
+  it('shares last good predictions across handler instances and keeps cities isolated', async () => {
+    const cache = new Map();
+    const first = createHazeOutlookHandler({ cache, news: { get: async () => feed([article('KL haze may ease tomorrow')]) }, now: () => now });
+    await invoke(first);
+    const restarted = createHazeOutlookHandler({ cache, news: { get: async () => feed([]) }, now: () => now });
+    assert.equal((await invoke(restarted)).body.outlook.cache.status, 'cached');
+    const otherCity = await invoke(restarted, '/api/haze-outlook?location=Petaling+Jaya');
+    assert.equal(otherCity.body.outlook.status, 'unavailable');
+    assert.equal(otherCity.body.outlook.cache, undefined);
+  });
+
+  it('replaces the saved prediction after recovery, even when shared caching fails', async () => {
+    let articles = [article('KL haze may ease tomorrow')];
+    const brokenCache = { get: async () => { throw new Error('cache down'); }, set: async () => { throw new Error('cache down'); } };
+    const handler = createHazeOutlookHandler({ cache: brokenCache, news: { get: async () => feed(articles) }, now: () => now });
+    await invoke(handler);
+    articles = []; assert.equal((await invoke(handler)).body.outlook.cache.status, 'cached');
+    articles = [article('KL haze may worsen tomorrow')];
+    const recovered = (await invoke(handler)).body;
+    assert.equal(recovered.outlook.trend, 'mixed'); assert.equal(recovered.outlook.anotherWave.expected, true); assert.equal(recovered.outlook.cache, undefined);
+    articles = [];
+    assert.equal((await invoke(handler)).body.outlook.anotherWave.expected, true);
+  });
+
+  it('ignores malformed or wrong-city shared cache entries', async () => {
+    for (const stored of [{ outlook: { status: 'estimated' } }, {
+      outlook: estimateHazeOutlook(feed([article('Penang haze may ease tomorrow')]), 'Penang', now), news: feed([]),
+    }]) {
+      const handler = createHazeOutlookHandler({ cache: { get: async () => stored }, news: { get: async () => feed([]) }, now: () => now });
+      assert.equal((await invoke(handler)).body.outlook.status, 'unavailable');
+    }
+  });
+  it('shares the refresh interval across cold starts and retries failures sooner', async () => {
+    const cache = new Map();
+    let time = now, calls = 0, fail = false;
+    const news = { intervalMs: 3 * 3600000, retryMs: 15 * 60000, get: async () => {
+      calls++; if (fail) throw new Error('upstream down');
+      return feed([article('KL haze may ease tomorrow')]);
+    } };
+    await invoke(createHazeOutlookHandler({ cache, news, now: () => time }));
+    const restarted = createHazeOutlookHandler({ cache, news, now: () => time });
+    await invoke(restarted); assert.equal(calls, 1);
+    time = new Date(now.getTime() + 3 * 3600000); fail = true;
+    assert.equal((await invoke(restarted)).body.outlook.cache.status, 'cached'); assert.equal(calls, 2);
+    time = new Date(time.getTime() + 14 * 60000);
+    await invoke(restarted); assert.equal(calls, 2);
+    time = new Date(time.getTime() + 60000);
+    await invoke(restarted); assert.equal(calls, 3);
   });
 });

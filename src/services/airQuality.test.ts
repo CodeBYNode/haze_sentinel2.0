@@ -7,11 +7,11 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe('air-quality API client', () => {
   it('retrieves the news-based outlook and its sources for the selected city', async () => {
-    const outlook = { status: 'unavailable', trend: 'unknown', summary: 'No explicit outlook reported.', alleviation: { expected: null, timeframe: null }, anotherWave: { expected: null, timeframe: null } };
+    const outlook = { status: 'unavailable', trend: 'unknown', summary: 'No explicit outlook reported.', location: profile.location, generatedAt: '2026-10-11T00:00:00Z', limitations: [], alleviation: { expected: null, timeframe: null, evidence: [] }, anotherWave: { expected: null, timeframe: null, evidence: [] } };
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ news: { articles: [], source: 'NewsData.io' }, outlook })));
     vi.stubGlobal('fetch', fetchMock);
     const result = await getHazeOutlook(profile);
-    expect(fetchMock.mock.calls[0]).toEqual(['/api/haze-outlook?location=Kuala+Lumpur', { signal: undefined, cache: 'no-store' }]);
+    expect(fetchMock.mock.calls[0]).toEqual(['/api/haze-outlook?location=Kuala+Lumpur', { signal: expect.any(AbortSignal), cache: 'no-store' }]);
     expect(result.news.articles).toEqual([]);
     expect(result.outlook).toEqual(outlook);
   });

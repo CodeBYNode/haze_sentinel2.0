@@ -67,11 +67,13 @@ export class NewsDataError extends Error {
 }
 
 export class NewsDataService {
-  constructor({ apiKey = process.env.NEWSDATA_API_KEY, intervalHours = process.env.NEWS_REFRESH_INTERVAL_HOURS, fetchImpl = fetch, now = () => Date.now(), retryMs = 15 * 60 * 1000, queries = SEARCHES, countries = 'my,id,sg', languages = 'en,ms' } = {}) {
+  constructor({ apiKey = process.env.NEWSDATA_API_KEY, intervalHours = process.env.NEWS_REFRESH_INTERVAL_HOURS, fetchImpl = fetch, now = () => Date.now(), retryMs = 15 * 60 * 1000, queries = SEARCHES, countries = 'my,id,sg', languages = 'en,ms', maxPages = 1, timeoutMs = 10000 } = {}) {
     this.apiKey = apiKey?.trim();
     this.queries = queries;
     this.countries = countries;
     this.languages = languages;
+    this.maxPages = maxPages === 2 ? 2 : 1;
+    this.timeoutMs = timeoutMs;
     const parsedHours = Number(intervalHours);
     this.intervalMs = Number.isFinite(parsedHours) && parsedHours > 0 ? parsedHours * 60 * 60 * 1000 : 3 * 60 * 60 * 1000;
     this.fetch = fetchImpl;
@@ -114,9 +116,25 @@ export class NewsDataService {
     if (this.countries) url.searchParams.set('country', this.countries);
     if (this.languages) url.searchParams.set('language', this.languages);
     url.searchParams.set('size', '10');
+    const articles = [];
+    for (let page = 0; page < this.maxPages; page++) {
+      let payload;
+      try { payload = await this.requestPage(url); }
+      catch (error) {
+        if (page === 0) throw error;
+        return { articles, partial: true };
+      }
+      articles.push(...payload.results);
+      if (typeof payload.nextPage !== 'string' || !payload.nextPage) break;
+      url.searchParams.set('page', payload.nextPage);
+    }
+    return { articles, partial: false };
+  }
+
+  async requestPage(url) {
     let response;
     try {
-      response = await this.fetch(url, { method: 'GET', headers: { 'accept': 'application/json', 'X-ACCESS-KEY': this.apiKey }, signal: AbortSignal.timeout(10000) });
+      response = await this.fetch(url, { method: 'GET', headers: { 'accept': 'application/json', 'X-ACCESS-KEY': this.apiKey }, signal: AbortSignal.timeout(this.timeoutMs) });
     } catch { throw new NewsDataError('Could not reach NewsData.io. Cached articles will remain available.', 'network'); }
     let payload;
     try { payload = await response.json(); }
@@ -128,7 +146,7 @@ export class NewsDataService {
       throw new NewsDataError(message, code);
     }
     if (!Array.isArray(payload.results)) throw new NewsDataError('NewsData.io returned an incomplete or malformed response.', 'malformed');
-    return payload.results;
+    return payload;
   }
 
   async refresh() {
@@ -144,8 +162,9 @@ export class NewsDataService {
       }
       return this.cached;
     }
-    const articles = normalizeNewsResponse({ status: 'success', results: fulfilled.flatMap(x => x.value) });
-    this.cached = { articles, source: 'NewsData.io', updatedAt: new Date(this.now()).toISOString(), error: failed.length ? 'Some topic searches could not be refreshed; showing available results.' : null, partial: failed.length > 0, refreshFailed: false };
+    const articles = normalizeNewsResponse({ status: 'success', results: fulfilled.flatMap(x => x.value.articles) });
+    const partial = failed.length > 0 || fulfilled.some(x => x.value.partial);
+    this.cached = { articles, source: 'NewsData.io', updatedAt: new Date(this.now()).toISOString(), error: partial ? 'Some news results could not be refreshed; showing available results.' : null, partial, refreshFailed: false };
     return this.cached;
   }
 
