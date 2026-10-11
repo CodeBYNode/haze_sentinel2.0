@@ -6,6 +6,7 @@ export type HazeOutlook = {
   summary: string; confidence: 'low' | 'very_low' | 'none'; reason: string | null;
   generatedAt: string; source: string; location: string; timeZone: string; updatedAt: string | null; articlesChecked: number;
   cache?: { status: 'cached'; savedAt: string; servedAt: string; reason: string };
+  newsBasis?: { scope: 'local' | 'malaysia'; label: string; reused: boolean; newestArticleAt: string | null };
   alleviation: OutlookEvent; anotherWave: OutlookEvent;
   method: { name: 'news_haze_heuristic'; query: string; maximumArticleAgeHours: number;
     heuristicRules: Record<string, { hours: [number, number]; reason: string; priority: number }> };

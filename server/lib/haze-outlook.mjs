@@ -1,3 +1,5 @@
+import { cachedOutlook } from '../../shared/outlook-cache.mjs';
+
 const DAY = 86400000;
 const ZONE = 'Asia/Kuala_Lumpur';
 const dayOf = ms => new Date(ms + 8 * 3600000).toISOString().slice(0, 10);
@@ -50,6 +52,16 @@ function localText(text, location) {
   return localAliases(location).some(alias => words.includes(' ' + alias.replace(/[^a-z0-9]+/g, ' ').trim() + ' '));
 }
 
+const MALAYSIAN_LOCATION = /\b(malaysia|kuala lumpur|kl|selangor|petaling jaya|shah alam|subang|klang|ampang|putrajaya|cyberjaya|johor|penang|pulau pinang|george town|ipoh|perak|melaka|malacca|seremban|negeri sembilan|pahang|kuantan|kedah|alor setar|perlis|kelantan|kota bharu|terengganu|sabah|sarawak|kuching|kota kinabalu|labuan)\b/i;
+const FOREIGN_CONTEXT = /\b(singapore|singapura|indonesia|jakarta|sumatra|kalimantan|thailand|bangkok|pakistan|india|china|united states)\b/i;
+function malaysiaHazeReport(article) {
+  const text = article.title + ' ' + (article.description || '');
+  if (!HAZE.test(text) || FOREIGN_CONTEXT.test(text) || /\b(film|movie|fictional|blu[ -]?ray|album|song)\b/i.test(text)) return false;
+  const nationalContext = /\b(malaysia|malaysian|education ministry|state education directors|public works department|jkr|moe|kementerian pendidikan)\b/i.test(text);
+  return nationalContext && (/\b(malaysia|malaysian)\b/i.test(text)
+    || article.countries?.some(country => /^(malaysia|my)$/i.test(country)));
+}
+
 // Deliberately simple planning defaults, not calibrated meteorological relationships.
 export const heuristicRules = {
   rain_relief: { hours: [12, 36], reason: 'Assume possible short-term relief after reported or expected rain.', priority: 3 },
@@ -74,14 +86,14 @@ function heuristicWindow(ruleName, published, now) {
     anchorAt: new Date(published).toISOString() };
 }
 
-function heuristicCandidates(articles, location, now) {
+function heuristicCandidates(articles, location, now, regional = false) {
   const candidates = { alleviation: [], anotherWave: [] };
   for (const article of articles) {
     const published = publicationTime(article);
-    const titleContext = HAZE.test(article.title) && localText(article.title, location);
+    const titleContext = HAZE.test(article.title) && (regional || localText(article.title, location));
     const sentences = [article.title, ...(article.description || '').split(/(?<=[.!?;])\s+|\n+/)];
     for (const sentence of sentences) {
-      if (NEGATED.test(sentence) || (!localText(sentence, location) && !titleContext)) continue;
+      if (NEGATED.test(sentence) || (!regional && !localText(sentence, location) && !titleContext)) continue;
       const haze = HAZE.test(sentence);
       // A weather-only sentence can be used when its headline supplies the local haze context.
       if (!haze && !titleContext) continue;
@@ -114,7 +126,7 @@ function heuristicCandidates(articles, location, now) {
 }
 
 /** Prefer reported timing; fill missing windows using explicitly labelled news-based planning defaults. */
-export function estimateHazeOutlook(feed, location = 'Kuala Lumpur', now = new Date()) {
+export function estimateHazeOutlook(feed, location = 'Kuala Lumpur', now = new Date(), { allowRegional = false } = {}) {
   const base = {
     status: 'unavailable', trend: 'unknown', confidence: 'none', reason: null,
     generatedAt: now.toISOString(), source: 'NewsData.io latest haze reports', location, timeZone: ZONE,
@@ -132,18 +144,21 @@ export function estimateHazeOutlook(feed, location = 'Kuala Lumpur', now = new D
       ? 'The news feed is stale. A current haze outlook cannot be estimated.' : feed?.error || 'Haze reports are unavailable. Please try again later.' };
   }
   const evidence = { alleviation: [], anotherWave: [] };
-  const localArticles = (feed.articles || []).filter(article => {
+  const recent = (feed.articles || []).filter(article => {
     const published = publicationTime(article);
-    return Number.isFinite(published) && published <= now.getTime() + 5 * 60000 && now.getTime() - published <= 48 * 3600000
-      && localText(article.title + ' ' + article.description, location);
+    return Number.isFinite(published) && published <= now.getTime() + 5 * 60000 && now.getTime() - published <= 48 * 3600000;
   });
+  let localArticles = recent.filter(article => HAZE.test(article.title + ' ' + (article.description || ''))
+    && localText(article.title + ' ' + (article.description || ''), location));
+  const regional = allowRegional && !localArticles.length && MALAYSIAN_LOCATION.test(location);
+  if (regional) localArticles = recent.filter(malaysiaHazeReport);
   for (const article of localArticles) {
     const published = publicationTime(article);
     const sentences = [article.title, ...(article.description || '').split(/(?<=[.!?;])\s+|\n+/)];
     for (const sentence of sentences) {
       if (!HAZE.test(sentence) || !FUTURE.test(sentence) || NEGATED.test(sentence)) continue;
       // If another location is discussed in the description, require this claim itself to name the target.
-      if (!localText(sentence, location) && !localText(article.title, location)) continue;
+      if (!regional && !localText(sentence, location) && !localText(article.title, location)) continue;
       const easing = EASING.test(sentence), worsening = WORSENING.test(sentence);
       if (easing === worsening) continue; // Ambiguous mixed claims need a more capable parser.
       const timeframe = reportedWindow(sentence, published);
@@ -154,7 +169,7 @@ export function estimateHazeOutlook(feed, location = 'Kuala Lumpur', now = new D
         publishedAt: new Date(published).toISOString(), excerpt: sentence.slice(0, 600), timeframe });
     }
   }
-  const fallback = heuristicCandidates(localArticles, location, now);
+  const fallback = heuristicCandidates(localArticles, location, now, regional);
   const event = (items, candidates) => {
     const reported = items.filter(item => item.timeframe).sort((a, b) => Date.parse(a.timeframe.start) - Date.parse(b.timeframe.start))[0]?.timeframe;
     const candidate = candidates[0];
@@ -168,11 +183,34 @@ export function estimateHazeOutlook(feed, location = 'Kuala Lumpur', now = new D
   const trend = alleviation.expected && anotherWave.expected ? 'mixed' : alleviation.expected ? 'easing' : anotherWave.expected ? 'worsening' : 'unknown';
   const inferred = [alleviation, anotherWave].some(event => event.timeframe?.basis === 'heuristic');
   const describe = (event, text) => event.expected ? `${event.timeframe?.basis === 'heuristic' ? 'Rough heuristic' : 'Reported outlook'} — ${text}${event.timeframe ? `: ${event.timeframe.label}` : '; timing unknown'}.` : '';
-  return { ...base, status: found ? 'estimated' : 'unavailable', trend, confidence: found ? inferred ? 'very_low' : 'low' : 'none',
+  return { ...base, status: found ? 'estimated' : 'unavailable', trend, confidence: found ? inferred || regional ? 'very_low' : 'low' : 'none',
     reason: found ? null : localArticles.length ? 'no_usable_signals' : 'no_recent_local_reports', articlesChecked: localArticles.length,
+    newsBasis: { scope: regional ? 'malaysia' : 'local', label: regional ? 'Malaysia-wide haze reports; city-specific news was not available.' : 'Local haze reports',
+      reused: false, newestArticleAt: localArticles.length ? new Date(Math.max(...localArticles.map(publicationTime))).toISOString() : null },
     alleviation, anotherWave,
-    summary: found ? [describe(alleviation, 'possible easing'), describe(anotherWave, 'persistence or worsening risk')].filter(Boolean).join(' ')
+    summary: found ? (regional ? 'Malaysia-wide news estimate. ' : '') + [describe(alleviation, 'possible easing'), describe(anotherWave, 'persistence or worsening risk')].filter(Boolean).join(' ')
       : localArticles.length ? 'Recent local reports contain no usable haze signals for a rough timeframe.'
         : `No recent haze reports explicitly mentioning ${location} were returned. Relief, another wave and timing cannot be estimated.`,
   };
+}
+
+/** Reuse actual source articles when no current estimate or saved prediction is available. */
+export function estimateReusableHazeOutlook(feed, location = 'Kuala Lumpur', now = new Date()) {
+  const current = estimateHazeOutlook(feed, location, now, { allowRegional: true });
+  if (current.status === 'estimated') return current;
+  const valid = (feed?.articles || []).filter(article => {
+    const published = publicationTime(article);
+    return Number.isFinite(published) && published <= now.getTime() && HAZE.test(article.title + ' ' + (article.description || ''));
+  });
+  const local = valid.filter(article => localText(article.title + ' ' + (article.description || ''), location));
+  const articles = local.length ? local : MALAYSIAN_LOCATION.test(location) ? valid.filter(malaysiaHazeReport) : [];
+  if (!articles.length) return current;
+  const published = Math.max(...articles.map(publicationTime));
+  // Reconstruct the estimate at the source's original time, never reset its bounds to today.
+  const historical = estimateHazeOutlook({ ...feed, articles, status: 'ready', stale: false }, location, new Date(published), { allowRegional: true });
+  if (historical.status !== 'estimated') return current;
+  historical.newsBasis.reused = true;
+  historical.confidence = 'very_low';
+  historical.limitations.push('Previously retrieved news is reused. Original article dates and estimate windows are retained; this is not a fresh forecast.');
+  return cachedOutlook({ outlook: historical, news: feed }, 'reused_news', now).outlook;
 }

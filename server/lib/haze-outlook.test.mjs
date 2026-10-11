@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { estimateHazeOutlook } from './haze-outlook.mjs';
+import { estimateHazeOutlook, estimateReusableHazeOutlook } from './haze-outlook.mjs';
 import { createHazeOutlookHandler, createHazeNewsService } from './haze-outlook-api.mjs';
 import vercelHandler from '../../api/haze-outlook.js';
 
@@ -117,6 +117,60 @@ describe('news-based haze outlook', () => {
   });
 });
 
+describe('reusable news outlook', () => {
+  it('uses national Malaysian haze news when a Kuala Lumpur headline is missing', () => {
+    const result = estimateReusableHazeOutlook(feed([
+      article('Haze: State education directors to decide on school operations', { countries: ['malaysia'], description: 'The Education Ministry is monitoring haze impacts.' }),
+      article('JKR street lights to stay lit longer during haze', { countries: ['malaysia'] }),
+    ]), 'Kuala Lumpur', now);
+    assert.equal(result.status, 'estimated'); assert.equal(result.newsBasis.scope, 'malaysia');
+    assert.equal(result.confidence, 'very_low'); assert.equal(result.articlesChecked, 2);
+    assert.equal(result.alleviation.timeframe.rule, 'episode_relief');
+    assert.match(result.summary, /Malaysia-wide/); assert.match(result.newsBasis.label, /city-specific news was not available/);
+  });
+  it('prefers local evidence over national fallback', () => {
+    const result = estimateReusableHazeOutlook(feed([
+      article('KL haze easing after rain'), article('Malaysia haze persists amid dry weather'),
+    ]), 'Kuala Lumpur', now);
+    assert.equal(result.newsBasis.scope, 'local'); assert.equal(result.articlesChecked, 1);
+    assert.equal(result.alleviation.timeframe.rule, 'rain_relief');
+  });
+  it('reuses stale articles even without a previously saved prediction', () => {
+    const result = estimateReusableHazeOutlook({ ...feed([article('KL haze is worsening')]), status: 'stale', stale: true }, 'Kuala Lumpur', now);
+    assert.equal(result.status, 'estimated'); assert.equal(result.newsBasis.reused, true);
+    assert.equal(result.cache.reason, 'reused_news'); assert.equal(result.cache.savedAt, '2026-10-10T12:00:00.000Z');
+    assert.equal(result.anotherWave.timeframe.end, '2026-10-11T12:00:00.000Z');
+  });
+  it('reuses news beyond 48 hours and marks its original windows as ended', () => {
+    const source = feed([article('Malaysia haze may ease tomorrow', { publishedAt: '2026-10-01 12:00:00' })]);
+    const result = estimateReusableHazeOutlook(source, 'Kuala Lumpur', now);
+    const repeated = estimateReusableHazeOutlook({ ...source, updatedAt: '2026-10-15T00:00:00Z' }, 'Kuala Lumpur', new Date('2026-10-15T00:00:00Z'));
+    assert.equal(result.status, 'estimated'); assert.equal(result.newsBasis.scope, 'malaysia'); assert.equal(result.newsBasis.reused, true);
+    assert.match(result.alleviation.timeframe.label, /window ended/);
+    assert.equal(result.alleviation.timeframe.end, repeated.alleviation.timeframe.end);
+    assert.equal(result.generatedAt, repeated.generatedAt);
+    assert.ok(!result.summary.includes('tomorrow'));
+  });
+  it('reconstructs expired reported timing even when the source was retrieved again today', () => {
+    const result = estimateReusableHazeOutlook(feed([article('KL haze may ease today', { publishedAt: '2026-10-09 12:00:00' })]), 'Kuala Lumpur', now);
+    assert.equal(result.status, 'estimated'); assert.equal(result.newsBasis.reused, true);
+    assert.match(result.alleviation.timeframe.label, /window ended/);
+  });
+  it('does not turn foreign news, entertainment, ambiguous or invalid-dated articles into Malaysian forecasts', () => {
+    for (const item of [
+      article('Singapore haze worsens', { countries: ['malaysia'] }),
+      article('Film review', { countries: ['malaysia'], description: 'Haze and pollution in a fictional Malaysia.' }),
+      article('Malaysia haze may ease or worsen tomorrow'),
+      article('Malaysia haze may ease tomorrow', { publishedAtTimezone: null }),
+      article('Malaysia haze worsens', { publishedAt: '2026-10-12 12:00:00' }),
+    ]) {
+      const result = estimateReusableHazeOutlook(feed([item]), 'Kuala Lumpur', now);
+      assert.equal(result.status, 'unavailable', item.title);
+    }
+    assert.equal(estimateReusableHazeOutlook(feed([article('Malaysia haze worsens')]), 'Singapore', now).status, 'unavailable');
+  });
+});
+
 async function invoke(handler, url = '/api/haze-outlook', method = 'GET') {
   const result = {};
   await handler({ url, method }, { writeHead(status, headers) { result.status = status; result.headers = headers; }, end(raw) { result.body = JSON.parse(raw); } });
@@ -138,6 +192,7 @@ describe('NewsData haze outlook endpoint', () => {
     const handler = createHazeOutlookHandler({ news, now: () => now });
     const response = await invoke(handler, '/api/haze-outlook?location=Kuala+Lumpur&apikey=client-key');
     assert.equal(response.status, 200); assert.equal(response.headers['cache-control'], 'no-store');
+    assert.equal(response.headers['x-haze-outlook-version'], 'news-reuse-v2');
     assert.equal(response.body.outlook.trend, 'easing'); assert.equal(response.body.news.articles.length, 1);
     assert.ok(!JSON.stringify(response.body).includes('private-test-key'));
     await invoke(handler); assert.equal(calls, 1);
@@ -227,5 +282,15 @@ describe('NewsData haze outlook endpoint', () => {
     await invoke(restarted); assert.equal(calls, 2);
     time = new Date(time.getTime() + 60000);
     await invoke(restarted); assert.equal(calls, 3);
+  });
+  it('returns a prediction from the national reports in the first page and caches reused news', async () => {
+    const cache = new Map();
+    const news = { get: async () => feed([article('Haze: State education directors to decide school operations', { countries: ['malaysia'], publishedAt: '2026-10-01 12:00:00' })]) };
+    const handler = createHazeOutlookHandler({ cache, news, now: () => now });
+    const response = await invoke(handler);
+    assert.equal(response.body.outlook.status, 'estimated'); assert.equal(response.body.outlook.newsBasis.reused, true);
+    assert.equal(cache.size, 1);
+    const restarted = createHazeOutlookHandler({ cache, news: { get: async () => { throw Error('offline'); } }, now: () => now });
+    assert.equal((await invoke(restarted)).body.outlook.status, 'estimated');
   });
 });

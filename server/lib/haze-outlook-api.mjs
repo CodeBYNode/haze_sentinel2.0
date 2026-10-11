@@ -1,10 +1,10 @@
 import { NewsDataService } from './newsdata.mjs';
-import { estimateHazeOutlook } from './haze-outlook.mjs';
+import { estimateReusableHazeOutlook } from './haze-outlook.mjs';
 import { cachedOutlook, hasUsableOutlook, outlookLocationKey } from '../../shared/outlook-cache.mjs';
 
 export const createHazeNewsService = options => new NewsDataService({ maxPages: 2, timeoutMs: 4500, ...options, queries: ['haze'], countries: null, languages: null });
 const send = (res, status, body, headers = {}) => {
-  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', ...headers });
+  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'x-haze-outlook-version': 'news-reuse-v2', ...headers });
   res.end(JSON.stringify(body));
 };
 
@@ -43,8 +43,14 @@ export function createHazeOutlookHandler({ news = createHazeNewsService(), now =
     try { feed = await news.get(); }
     catch { feed = { articles: [], source: 'NewsData.io', status: 'unavailable', stale: false, updatedAt: null, error: 'Haze news could not be refreshed.' }; }
     const refreshDelay = ['ready', 'partial'].includes(feed?.status) && !feed.stale ? news.intervalMs || 0 : news.retryMs || 0;
-    const current = { outlook: estimateHazeOutlook(feed, location, now()), news: feed,
+    const current = { outlook: estimateReusableHazeOutlook(feed, location, now()), news: feed,
       refreshAfter: new Date(now().getTime() + refreshDelay).toISOString() };
+    if (previous && current.outlook.cache && Date.parse(previous.outlook.generatedAt) >= Date.parse(current.outlook.generatedAt)) {
+      const lastGood = { ...previous, refreshAfter: current.refreshAfter };
+      remember(lastGood);
+      if (cache) await cacheOperation(() => cache.set(key, lastGood));
+      return send(res, 200, cachedOutlook(lastGood, 'reused_news', now()));
+    }
     if (hasUsableOutlook(current, location)) {
       remember(current);
       // No expiry: retain the last good estimate until replaced (or the platform evicts it).

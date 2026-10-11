@@ -64,4 +64,13 @@ describe('Today backend rendering', () => {
     expect(html).toContain('Checking for a newer estimate'); expect(html).toContain('window ended');
     expect(html).not.toContain('Outlook unavailable');
   });
+  it('labels regional and reused news so it is not presented as a new city-specific forecast', () => {
+    const outlook = { status: 'estimated', trend: 'easing', confidence: 'very_low', summary: 'Last saved estimate.',
+      newsBasis: { scope: 'malaysia', label: 'Malaysia-wide haze reports; city-specific news was not available.', reused: true, newestArticleAt: '2026-10-01T12:00:00Z' },
+      alleviation: { expected: true, timeframe: { label: '2 Oct 2026 (window ended)' } },
+      anotherWave: { expected: null, timeframe: null } } as HazeOutlook;
+    const html = renderToStaticMarkup(<Today {...base} reading={null} outlook={outlook}/>);
+    expect(html).toContain('Malaysia-wide haze reports'); expect(html).toContain('Reusing previously retrieved news');
+    expect(html).toContain('Latest source'); expect(html).toContain('1 Oct 2026');
+  });
 });

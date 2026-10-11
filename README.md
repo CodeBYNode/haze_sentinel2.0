@@ -146,7 +146,11 @@ The card labels imposed timing "Rough haze outlook" with "Very low confidence";
 the Sources drawer explains each assumption. Labels show the remaining time
 from the request, while the actual bounds remain fixed to publication time.
 Expired windows are discarded; refreshing the same story never extends them.
-With no usable local haze signal, an event stays unknown. Evidence includes the publisher,
+When city-specific reports are missing, the endpoint can use clearly identified
+Malaysia-wide haze reports as a very-low-confidence regional fallback. It labels
+the result `newsBasis.scope: "malaysia"`; national reports do not become
+city-specific measurements or forecasts. Foreign and entertainment reports are
+excluded. With no usable haze signal, an event stays unknown. Evidence includes the publisher,
 article link, publication time and matched sentence. Persistent/worsening haze
 does not prove a separate incoming plume. This is a rough news-based estimate,
 not a numerical AQI forecast or official advisory; it adds no model dependency.
@@ -164,6 +168,16 @@ also initialize the browser cache. Reloads show the saved prediction immediately
 while checking for an update. New valid predictions replace older ones; unavailable
 responses never overwrite them. API keys and profile/health details are excluded.
 
+Previously fetched articles can be reused without waiting for a new headline.
+When no saved prediction exists but relevant news is stale, older than 48 hours,
+or its time window has ended, the endpoint reconstructs a historical estimate
+at the newest relevant article's publication time. It returns that estimate with
+`newsBasis.reused: true` and `outlook.cache.reason: "reused_news"`. Article dates
+and original windows remain unchanged; expired windows are visibly historical.
+A newer saved prediction is never replaced by an older reconstruction. The UI
+shows the news scope and latest source date. The response header
+`X-Haze-Outlook-Version: news-reuse-v2` identifies this endpoint implementation.
+
 Cached predictions retain `status: "estimated"` and include `outlook.cache` with
 `status: "cached"`, original `savedAt`, `servedAt` and fallback `reason`. The UI
 labels them "Last saved haze outlook", shows the save time, and replaces relative
@@ -174,8 +188,8 @@ The shared cache preserves the three-hour refresh cadence across function restar
 and deployments; failures retry after fifteen minutes. Cache operations have an
 800 ms limit and cannot prevent serving a prediction. Entries have no explicit
 expiry, but Vercel can evict its regional runtime cache and users can clear browser
-storage. The browser retains up to 32 locations. If a location has never produced
-a usable estimate and neither cache has one, HTTP 200 returns
+storage. The browser retains up to 32 locations. If neither a saved prediction
+nor reusable relevant news exists for a location, HTTP 200 returns
 `outlook.status: "unavailable"` with a reason. No prediction is invented.
 
 The remaining API routes (news, config, health and spendings) still run on the
