@@ -24,7 +24,8 @@ describe('news-based haze outlook', () => {
   it('extracts worsening and relative numeric/word durations', () => {
     for (const phrase of ['within two days', 'within 48 hours', 'over the next 2 days', 'for two days']) {
       const result = estimate(article('KL haze is expected to worsen ' + phrase));
-      assert.equal(result.trend, 'worsening');
+      assert.equal(result.trend, 'mixed'); // Reported worsening plus a later assumed relief window.
+      assert.equal(result.anotherWave.timeframe.basis, 'reported');
       assert.equal(result.anotherWave.timeframe.start, '2026-10-10T12:00:00.000Z');
       assert.equal(result.anotherWave.timeframe.end, '2026-10-12T12:00:00.000Z');
     }
@@ -39,13 +40,15 @@ describe('news-based haze outlook', () => {
     const result = estimate(article('KL haze may ease tomorrow'), article('KL haze could return in three days'));
     assert.equal(result.trend, 'mixed'); assert.equal(result.alleviation.expected, true); assert.equal(result.anotherWave.expected, true);
   });
-  it('retains a reported future trend without inventing timing', () => {
+  it('fills a reported future trend with a labelled heuristic window when timing is absent', () => {
     const result = estimate(article('KL haze is likely to persist'));
-    assert.equal(result.anotherWave.expected, true); assert.equal(result.anotherWave.timeframe, null);
-    assert.match(result.summary, /timing not reported/);
+    assert.equal(result.anotherWave.expected, true); assert.equal(result.anotherWave.basis, 'reported');
+    assert.equal(result.anotherWave.timeframe.basis, 'heuristic');
+    assert.equal(result.anotherWave.timeframe.rule, 'worsening_risk');
+    assert.equal(result.confidence, 'very_low'); assert.match(result.summary, /Rough heuristic/);
   });
-  it('does not predict from current conditions, negations, irrelevant topics or ambiguous claims', () => {
-    for (const title of ['KL morning cancelled due to worsening haze', 'KL haze is not expected to worsen tomorrow', 'KL haze is unlikely to ease tomorrow', 'KL economy will improve tomorrow', 'KL haze may ease or worsen tomorrow']) {
+  it('does not infer from negations, irrelevant topics or ambiguous claims', () => {
+    for (const title of ['KL haze is not expected to worsen tomorrow', 'KL haze is unlikely to ease tomorrow', 'No haze expected in KL tomorrow', 'KL economy will improve tomorrow', 'KL haze may ease or worsen tomorrow']) {
       const result = estimate(article(title));
       assert.equal(result.status, 'unavailable', title); assert.equal(result.alleviation.expected, null); assert.equal(result.anotherWave.expected, null);
     }
@@ -73,6 +76,44 @@ describe('news-based haze outlook', () => {
   it('does not count the same article twice across title and description', () => {
     const result = estimate(article('KL haze may ease tomorrow', { description: 'KL haze may ease tomorrow.' }));
     assert.equal(result.alleviation.evidence.length, 1);
+  });
+  it('provides rough relief and near-term worsening windows for a current local haze report', () => {
+    const result = estimate(article('KL morning cancelled due to worsening haze'));
+    assert.equal(result.status, 'estimated'); assert.equal(result.confidence, 'very_low');
+    assert.equal(result.alleviation.basis, 'heuristic'); assert.equal(result.anotherWave.basis, 'heuristic');
+    assert.equal(result.alleviation.timeframe.start, '2026-10-12T12:00:00.000Z');
+    assert.equal(result.alleviation.timeframe.end, '2026-10-14T12:00:00.000Z');
+    assert.equal(result.anotherWave.timeframe.end, '2026-10-11T12:00:00.000Z');
+    assert.equal(result.alleviation.timeframe.label, 'Roughly 2–4 days');
+    assert.equal(result.anotherWave.timeframe.label, 'Within ~12 hours');
+    assert.equal(result.alleviation.timeframe.reportedText, null);
+    assert.match(result.alleviation.rationale, /Default assumption/);
+  });
+  it('uses a shorter relief window for reported or expected rain, including weather-only descriptions', () => {
+    const result = estimate(article('KL haze outlook', { description: 'Rain is expected over the city.' }));
+    assert.equal(result.alleviation.timeframe.rule, 'rain_relief');
+    assert.equal(result.alleviation.timeframe.end, '2026-10-12T00:00:00.000Z');
+    assert.equal(result.anotherWave.expected, null);
+  });
+  it('uses a slower relief window for dry weather and burning signals', () => {
+    const result = estimate(article('KL haze persists amid dry weather and forest fires'));
+    assert.equal(result.alleviation.timeframe.rule, 'dry_relief');
+    assert.equal(result.alleviation.timeframe.end, '2026-10-15T12:00:00.000Z');
+    assert.equal(result.anotherWave.timeframe.rule, 'dry_risk');
+  });
+  it('prefers explicitly reported timing over fallback estimates', () => {
+    const result = estimate(article('KL haze may ease within seven days'), article('KL haze outlook', { description: 'Rain is expected over the city.' }));
+    assert.equal(result.alleviation.timeframe.basis, 'reported');
+    assert.equal(result.alleviation.timeframe.end, '2026-10-17T12:00:00.000Z');
+    assert.equal(result.alleviation.timeframe.rule, null);
+  });
+  it('does not restart or extend fallback windows when the same article is refreshed', () => {
+    const articles = [article('KL haze is worsening')];
+    const first = estimateHazeOutlook(feed(articles), 'Kuala Lumpur', now);
+    const later = estimateHazeOutlook(feed(articles), 'Kuala Lumpur', new Date('2026-10-11T13:00:00Z'));
+    assert.equal(later.alleviation.timeframe.start, first.alleviation.timeframe.start);
+    assert.equal(later.alleviation.timeframe.end, first.alleviation.timeframe.end);
+    assert.equal(later.anotherWave.expected, null); // The 24-hour worsening window has expired.
   });
 });
 

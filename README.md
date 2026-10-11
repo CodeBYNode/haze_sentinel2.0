@@ -23,7 +23,7 @@ The four main destinations are Today, Schedule, Assistant, and Profile. The onbo
 
 The active mobile UI is in `src/mobile`. Current air quality, daily forecasts, station selection, news and general assistant answers use the existing Node backend. `src/mobile/useLiveData.ts` handles independent visible-page refreshes using `/api/config`. The shared sample schedule and calendar helpers remain in `src/ui/model.ts`; demo replanning remains in `src/mobile/planning.ts`. Authentication, schedule storage and notifications have no backend integration. See [the frontend data map](docs/backend-rendering.md).
 
-The source drawer renders backend news, publication dates, feed retrieval time, stale/error status, and station attribution. WAQI categories are rendered as returned, separately from Malaysian API/IPU. Haze outlook extracts explicit future statements and reported timing from NewsData articles; missing timing stays unknown. Past WAQI forecast records are not presented as an upcoming outlook.
+The source drawer renders backend news, publication dates, feed retrieval time, stale/error status, and station attribution. WAQI categories are rendered as returned, separately from Malaysian API/IPU. Haze outlook prefers timing reported in NewsData articles and fills missing timeframes with labelled, very-low-confidence planning assumptions. Past WAQI forecast records are not presented as an upcoming outlook.
 
 The mobile frontend always requests the backend for supported data. Provider failures show unavailable/error states rather than sample readings. The optional hourly demo is explicitly separate from station data. The older `VITE_AIR_QUALITY_DEMO` setting no longer controls this UI.
 
@@ -103,8 +103,8 @@ so failure of either provider does not hide the other's data. The returned news
 also populates the Sources drawer without a separate `/api/news` request.
 
 The estimator uses simple English/Malay phrases in headlines and descriptions:
-an explicit future haze statement such as "Kuala Lumpur haze may ease tomorrow"
-or "KL haze is expected to worsen within two days". Only reports with a known
+explicit future statements such as "Kuala Lumpur haze may ease tomorrow", plus
+current local haze and weather signals when reported timing is absent. Only reports with a known
 publication timezone from the last 48 hours mentioning the selected location
 are used (KL is accepted for Kuala Lumpur). Publisher country alone is not
 location evidence. Negated/ambiguous statements and expired time windows are
@@ -112,12 +112,29 @@ excluded. Syndicated headlines are grouped, not treated as independent votes.
 This conservative parser may miss valid reports with unsupported phrasing.
 
 `alleviation` and `anotherWave` independently contain `expected: true | null`,
-`timeframe` and linked `evidence`. The time window is extracted from "today",
+`timeframe`, `basis`, `rationale` and linked `evidence`. Reported time windows are extracted from "today",
 "tomorrow", "in N days/hours/weeks", or "within/over the next N" and resolved
-from publication time, never from request time. A report may provide a trend
-without timing; its timeframe remains null. Evidence includes the publisher,
+from publication time, never from request time. Reported timing takes priority
+over all fallback rules. When timing is missing, the fallback windows are:
+
+| Local report signal | Assumed window after publication |
+| --- | --- |
+| Rain expected or rain-related easing | Relief in 12–36 hours |
+| Easing conditions | Relief in 24–48 hours |
+| Dry weather, hotspots or active burning | Relief in 72–120 hours; persistence/worsening risk within 48 hours |
+| Other local haze or worsening | Relief in 48–96 hours; worsening adds a risk window within 24 hours |
+
+These are deliberately rough, uncalibrated planning defaults, not measured or
+validated meteorological relationships. Windows contain `basis: "reported"` or
+`"heuristic"`; heuristic windows include the applied `rule`, `anchorAt`, and
+`reportedText: null`. The JSON exposes the full rule table under `method`.
+The card labels imposed timing "Rough haze outlook" with "Very low confidence";
+the Sources drawer explains each assumption. Labels show the remaining time
+from the request, while the actual bounds remain fixed to publication time.
+Expired windows are discarded; refreshing the same story never extends them.
+With no usable local haze signal, an event stays unknown. Evidence includes the publisher,
 article link, publication time and matched sentence. Persistent/worsening haze
-does not prove a separate incoming plume. This is a low-confidence news summary,
+does not prove a separate incoming plume. This is a rough news-based estimate,
 not a numerical AQI forecast or official advisory; it adds no model dependency.
 
 Missing, stale or insufficient news produces HTTP 200 with

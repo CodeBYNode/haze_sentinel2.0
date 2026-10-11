@@ -34,7 +34,7 @@ describe('Today backend rendering', () => {
   it('displays processed relief and worsening windows separately', () => {
     const outlook = { status: 'estimated', trend: 'mixed', summary: 'Possible easing then renewed worsening.',
       alleviation: { expected: true, timeframe: { label: 'Tomorrow, 12 Oct' } }, anotherWave: { expected: true, timeframe: { label: '14 Oct' } },
-      method: { name: 'reported_haze_trend' } } as HazeOutlook;
+      method: { name: 'news_haze_heuristic' } } as HazeOutlook;
     const html = renderToStaticMarkup(<Today {...base} reading={null} outlook={outlook}/>);
     expect(html).toContain('Reports suggest a mixed outlook'); expect(html).toContain('Tomorrow, 12 Oct'); expect(html).toContain('14 Oct');
     expect(html).toContain('Low-confidence news estimate'); expect(html).toContain('Possible relief');
@@ -44,5 +44,14 @@ describe('Today backend rendering', () => {
       alleviation: { expected: null, timeframe: null }, anotherWave: { expected: null, timeframe: null } } as HazeOutlook;
     const html = renderToStaticMarkup(<Today {...base} reading={null} outlook={outlook}/>);
     expect(html).toContain('explicit future outlook'); expect(html).toContain('Cannot estimate'); expect(html).not.toContain('No signal in forecast');
+  });
+  it('labels imposed timeframes as a rough estimate with very low confidence', () => {
+    const outlook = { status: 'estimated', trend: 'mixed', confidence: 'very_low', summary: 'Rough heuristic — possible easing.',
+      alleviation: { expected: true, timeframe: { label: 'Roughly 2–4 days', basis: 'heuristic' } },
+      anotherWave: { expected: true, timeframe: { label: 'Within ~12 hours', basis: 'heuristic' } } } as HazeOutlook;
+    const html = renderToStaticMarkup(<Today {...base} reading={null} outlook={outlook}/>);
+    expect(html).toContain('Rough haze outlook'); expect(html).toContain('Very low confidence');
+    expect(html).toContain('Roughly 2–4 days'); expect(html).toContain('Within ~12 hours');
+    expect(html).not.toContain('Reports suggest a mixed outlook');
   });
 });
