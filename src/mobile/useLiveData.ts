@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { AQReading, Profile } from '../core/types';
 import type { HazeOutlook } from '../core/outlook';
-import { getHazeOutlook, getRefreshIntervals } from '../services/airQuality';
-import { getNews, type NewsFeed } from '../services/news';
+import { getCurrentAir, getHazeOutlook, getRefreshIntervals } from '../services/airQuality';
+import type { NewsFeed } from '../services/news';
 
 export function useLiveData(profile: Profile, enabled: boolean) {
   const [reading, setReading] = useState<AQReading | null>(null);
@@ -28,16 +28,15 @@ export function useLiveData(profile: Profile, enabled: boolean) {
     let active = true;
     let request: AbortController | undefined;
     setReading(null);
-    setOutlook(null);
     const refresh = async () => {
       request?.abort();
       const controller = new AbortController(); request = controller;
       setAirLoading(true); setAirError('');
       try {
-        const value = await getHazeOutlook(profile, controller.signal);
-        if (active && !controller.signal.aborted) { setReading(value.reading); setOutlook(value.outlook); }
+        const value = await getCurrentAir(profile, controller.signal);
+        if (active && !controller.signal.aborted) setReading(value);
       } catch (error) {
-        if (active && !controller.signal.aborted) { setReading(null); setOutlook(null); setAirError(error instanceof Error ? error.message : 'Air quality is unavailable.'); }
+        if (active && !controller.signal.aborted) { setReading(null); setAirError(error instanceof Error ? error.message : 'Air quality is unavailable.'); }
       } finally { if (active && !controller.signal.aborted) setAirLoading(false); }
     };
     void refresh();
@@ -51,12 +50,13 @@ export function useLiveData(profile: Profile, enabled: boolean) {
     if (!enabled) return;
     let active = true;
     let request: AbortController | undefined;
+    setOutlook(null); setNews(null);
     const refresh = async () => {
       request?.abort();
       const controller = new AbortController(); request = controller;
       setNewsLoading(true); setNewsError('');
-      try { const value = await getNews(controller.signal); if (active && !controller.signal.aborted) setNews(value); }
-      catch (error) { if (active && !controller.signal.aborted) setNewsError(error instanceof Error ? error.message : 'News is unavailable.'); }
+      try { const value = await getHazeOutlook(profile, controller.signal); if (active && !controller.signal.aborted) { setOutlook(value.outlook); setNews(value.news); } }
+      catch (error) { if (active && !controller.signal.aborted) { setOutlook(null); setNewsError(error instanceof Error ? error.message : 'Haze outlook is unavailable.'); } }
       finally { if (active && !controller.signal.aborted) setNewsLoading(false); }
     };
     void refresh();
@@ -64,7 +64,7 @@ export function useLiveData(profile: Profile, enabled: boolean) {
     const timer = window.setInterval(visibleRefresh, Math.min(15, Math.max(5, intervals.newsRefreshIntervalHours * 60)) * 60000);
     document.addEventListener('visibilitychange', visibleRefresh);
     return () => { active = false; request?.abort(); window.clearInterval(timer); document.removeEventListener('visibilitychange', visibleRefresh); };
-  }, [enabled, newsRevision, intervals.newsRefreshIntervalHours]);
+  }, [enabled, profile.location, revision, newsRevision, intervals.newsRefreshIntervalHours]);
 
   return { reading, outlook, airError, airLoading, news, newsError, newsLoading, refreshAir: () => setRevision(n => n + 1), refreshNews: () => setNewsRevision(n => n + 1) };
 }

@@ -34,15 +34,15 @@ describe('Today backend rendering', () => {
   it('displays processed relief and worsening windows separately', () => {
     const outlook = { status: 'estimated', trend: 'mixed', summary: 'Possible easing then renewed worsening.',
       alleviation: { expected: true, timeframe: { label: 'Tomorrow, 12 Oct' } }, anotherWave: { expected: true, timeframe: { label: '14 Oct' } },
-      coverage: { through: '2026-10-14' }, method: { pollutant: 'pm25' } } as HazeOutlook;
+      method: { name: 'reported_haze_trend' } } as HazeOutlook;
     const html = renderToStaticMarkup(<Today {...base} reading={null} outlook={outlook}/>);
-    expect(html).toContain('Easing and worsening ahead'); expect(html).toContain('Tomorrow, 12 Oct'); expect(html).toContain('14 Oct');
-    expect(html).toContain('Low-confidence daily estimate'); expect(html).toContain('Possible relief');
+    expect(html).toContain('Reports suggest a mixed outlook'); expect(html).toContain('Tomorrow, 12 Oct'); expect(html).toContain('14 Oct');
+    expect(html).toContain('Low-confidence news estimate'); expect(html).toContain('Possible relief');
   });
-  it('explains stale forecasts without claiming no incoming wave', () => {
-    const outlook = { status: 'unavailable', trend: 'unknown', summary: 'The particulate forecast is outdated (latest 3 Oct).',
+  it('explains insufficient news without claiming no incoming wave', () => {
+    const outlook = { status: 'unavailable', trend: 'unknown', summary: 'Recent reports do not provide an explicit future outlook.',
       alleviation: { expected: null, timeframe: null }, anotherWave: { expected: null, timeframe: null } } as HazeOutlook;
     const html = renderToStaticMarkup(<Today {...base} reading={null} outlook={outlook}/>);
-    expect(html).toContain('latest 3 Oct'); expect(html).toContain('Cannot estimate'); expect(html).not.toContain('No signal in forecast');
+    expect(html).toContain('explicit future outlook'); expect(html).toContain('Cannot estimate'); expect(html).not.toContain('No signal in forecast');
   });
 });

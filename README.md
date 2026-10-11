@@ -23,7 +23,7 @@ The four main destinations are Today, Schedule, Assistant, and Profile. The onbo
 
 The active mobile UI is in `src/mobile`. Current air quality, daily forecasts, station selection, news and general assistant answers use the existing Node backend. `src/mobile/useLiveData.ts` handles independent visible-page refreshes using `/api/config`. The shared sample schedule and calendar helpers remain in `src/ui/model.ts`; demo replanning remains in `src/mobile/planning.ts`. Authentication, schedule storage and notifications have no backend integration. See [the frontend data map](docs/backend-rendering.md).
 
-The source drawer renders backend news, publication dates, feed retrieval time, stale/error status, and station attribution. WAQI categories are rendered as returned, separately from Malaysian API/IPU. Arrival and relief times are unavailable because the backend provides daily forecasts only. Past forecast records are not presented as an upcoming outlook.
+The source drawer renders backend news, publication dates, feed retrieval time, stale/error status, and station attribution. WAQI categories are rendered as returned, separately from Malaysian API/IPU. Haze outlook extracts explicit future statements and reported timing from NewsData articles; missing timing stays unknown. Past WAQI forecast records are not presented as an upcoming outlook.
 
 The mobile frontend always requests the backend for supported data. Provider failures show unavailable/error states rather than sample readings. The optional hourly demo is explicitly separate from station data. The older `VITE_AIR_QUALITY_DEMO` setting no longer controls this UI.
 
@@ -93,28 +93,38 @@ the browser. Chat includes the current WAQI reading and the server's structured
 assessment, and uses only the available news snapshot without waiting for news
 requests. Missing data is disclosed instead of substituted with demo values.
 
-`GET /api/haze-outlook` returns `{ reading, outlook }` from one WAQI request. It
-uses the same server-only `WAQI_API_TOKEN` and location selectors as air-quality:
-`?location=Kuala+Lumpur`, `?stationId=5780`, or `?lat=3.14&lon=101.69`. Without a
-selector it uses `/feed/here/` (the server's IP location). Today requests this
-combined endpoint and displays its current reading and processed Haze outlook.
+`GET /api/haze-outlook?location=Kuala+Lumpur` returns `{ outlook, news }`. It calls
+`https://newsdata.io/api/1/latest?q=haze` using the server-only `NEWSDATA_API_KEY`
+in the documented `X-ACCESS-KEY` header. No country/language filter changes the
+requested search; returned articles are grouped and filtered for local outlook
+evidence. Set `NEWSDATA_API_KEY` in Vercel as well as the ignored local `.env`.
+The frontend loads current WAQI air quality and news-based outlook independently,
+so failure of either provider does not hide the other's data. The returned news
+also populates the Sources drawer without a separate `/api/news` request.
 
-The deterministic estimator prefers PM2.5, falling back to PM10. It compares
-daily average indices over the next seven calendar days in Asia/Kuala_Lumpur,
-starting from today's forecast average or a same-pollutant observation no older
-than two hours. A drop from a previous high or rise from a previous low must be
-at least **20% and 10 index points**. `alleviation` and `anotherWave` independently
-contain `expected` and a `timeframe` with the forecast date, day boundaries and
-display label. Coverage lists the actual available forecast dates; missing days
-are not interpolated. A wave means possible particulate worsening, not confirmed
-plume arrival. This is a low-confidence heuristic, not an official advisory.
+The estimator uses simple English/Malay phrases in headlines and descriptions:
+an explicit future haze statement such as "Kuala Lumpur haze may ease tomorrow"
+or "KL haze is expected to worsen within two days". Only reports with a known
+publication timezone from the last 48 hours mentioning the selected location
+are used (KL is accepted for Kuala Lumpur). Publisher country alone is not
+location evidence. Negated/ambiguous statements and expired time windows are
+excluded. Syndicated headlines are grouped, not treated as independent votes.
+This conservative parser may miss valid reports with unsupported phrasing.
 
-If no valid future particulate forecast or baseline exists, the response remains
-HTTP 200 with `outlook.status: "unavailable"`, a reason such as `stale_forecast`,
-and both expectations `null`. This preserves current observations without
-inventing an outlook. `false` means no significant change signal within the
-available forecast only. Exact hours and forecast issue times are unavailable.
-No additional provider, model call, secret, or dependency is needed.
+`alleviation` and `anotherWave` independently contain `expected: true | null`,
+`timeframe` and linked `evidence`. The time window is extracted from "today",
+"tomorrow", "in N days/hours/weeks", or "within/over the next N" and resolved
+from publication time, never from request time. A report may provide a trend
+without timing; its timeframe remains null. Evidence includes the publisher,
+article link, publication time and matched sentence. Persistent/worsening haze
+does not prove a separate incoming plume. This is a low-confidence news summary,
+not a numerical AQI forecast or official advisory; it adds no model dependency.
+
+Missing, stale or insufficient news produces HTTP 200 with
+`outlook.status: "unavailable"` and an explanatory reason. Missing claims stay
+unknown rather than implying no haze. The existing news service coalesces
+concurrent requests and caches the single haze search for the configured news
+refresh interval (default three hours), with a 15-minute failure retry delay.
 
 The remaining API routes (news, config, health and spendings) still run on the
 standalone Node server and need their own Vercel functions or a deployed backend

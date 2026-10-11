@@ -1,14 +1,11 @@
-export type OutlookWindow = { date: string; start: string; end: string; label: string; resolution: 'day'; timeZone: string };
+export type OutlookWindow = { start: string; end: string; label: string; reportedText: string; resolution: 'reported_window'; timeZone: string };
+export type OutlookEvidence = { articleId: string; title: string; url: string; publisher: string; publishedAt: string; excerpt: string; timeframe: OutlookWindow | null };
+export type OutlookEvent = { expected: true | null; timeframe: OutlookWindow | null; evidence: OutlookEvidence[] };
 export type HazeOutlook = {
-  status: 'estimated' | 'unavailable'; trend: 'easing' | 'worsening' | 'mixed' | 'steady' | 'unknown';
+  status: 'estimated' | 'unavailable'; trend: 'easing' | 'worsening' | 'mixed' | 'unknown';
   summary: string; confidence: 'low' | 'none'; reason: string | null;
-  generatedAt: string; observedAt: string | null; station: string | null;
-  source: string; latestForecastDay: string | null; timeZone: string;
-  alleviation: { expected: boolean | null; timeframe: OutlookWindow | null };
-  anotherWave: { expected: boolean | null; timeframe: OutlookWindow | null };
-  coverage: { from: string; through: string; forecastDays: string[] } | null;
-  daily: { day: string; averageIndex: number }[];
-  method: { name: string; relativeChange: number; minimumIndexChange: number; maximumHorizonDays: number;
-    pollutant: string | null; baseline: { value: number; source: string; day: string } | null };
+  generatedAt: string; source: string; location: string; timeZone: string; updatedAt: string | null; articlesChecked: number;
+  alleviation: OutlookEvent; anotherWave: OutlookEvent;
+  method: { name: 'reported_haze_trend'; query: string; maximumArticleAgeHours: number };
   limitations: string[];
 };

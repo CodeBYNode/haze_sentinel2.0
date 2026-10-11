@@ -6,20 +6,20 @@ const profile: Profile = { ageGroup: 'prefer', health: [], other: '', location: 
 afterEach(() => vi.unstubAllGlobals());
 
 describe('air-quality API client', () => {
-  it('retrieves the reading and processed outlook together for the selected city', async () => {
-    const outlook = { status: 'unavailable', trend: 'unknown', summary: 'Forecast outdated.', alleviation: { expected: null, timeframe: null }, anotherWave: { expected: null, timeframe: null } };
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ reading: { aqi: 99, stationId: '5780', station: 'Kuala Lumpur', pollutants: { pm25: 99 } }, outlook })));
+  it('retrieves the news-based outlook and its sources for the selected city', async () => {
+    const outlook = { status: 'unavailable', trend: 'unknown', summary: 'No explicit outlook reported.', alleviation: { expected: null, timeframe: null }, anotherWave: { expected: null, timeframe: null } };
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ news: { articles: [], source: 'NewsData.io' }, outlook })));
     vi.stubGlobal('fetch', fetchMock);
     const result = await getHazeOutlook(profile);
     expect(fetchMock.mock.calls[0]).toEqual(['/api/haze-outlook?location=Kuala+Lumpur', { signal: undefined, cache: 'no-store' }]);
-    expect(result.reading).toMatchObject({ aqi: 99, stationId: '5780', demo: false });
+    expect(result.news.articles).toEqual([]);
     expect(result.outlook).toEqual(outlook);
   });
-  it('uses coordinates for the outlook and propagates provider errors', async () => {
+  it('uses a location name for news even when coordinates are available, and propagates errors', async () => {
     const fetchMock = vi.fn(async (_url: string) => new Response(JSON.stringify({ error: 'Provider unavailable' }), { status: 502 }));
     vi.stubGlobal('fetch', fetchMock);
     await expect(getHazeOutlook({ ...profile, locationCoords: { lat: 3.14, lon: 101.69 } })).rejects.toThrow('Provider unavailable');
-    expect(fetchMock.mock.calls[0][0]).toBe('/api/haze-outlook?lat=3.14&lon=101.69');
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/haze-outlook?location=Kuala+Lumpur');
   });
   it('preserves source values and timestamp, and queries the chosen station', async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ reading: { aqi: 0, category: 'Good', indexName: 'WAQI AQI scale', observedAt: '2026-10-11T00:00:00+08:00', station: 'Station A', pollutants: { pm25: 0 }, forecast: null, attributions: [], source: 'WAQI' } })));

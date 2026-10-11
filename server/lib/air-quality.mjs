@@ -1,5 +1,4 @@
 import { WaqiService, WaqiError } from './waqi.mjs';
-import { estimateHazeOutlook } from './haze-outlook.mjs';
 
 const send = (res, status, body, headers = {}) => {
   res.writeHead(status, {
@@ -11,7 +10,7 @@ const send = (res, status, body, headers = {}) => {
   res.end(JSON.stringify(body));
 };
 
-export function createAirQualityHandler({ waqi = new WaqiService(), includeOutlook = false, now = () => new Date() } = {}) {
+export function createAirQualityHandler({ waqi = new WaqiService() } = {}) {
   return async (req, res) => {
     if (req.method !== 'GET') {
       return send(res, 405, { error: 'Method not allowed.' }, { allow: 'GET' });
@@ -40,10 +39,7 @@ export function createAirQualityHandler({ waqi = new WaqiService(), includeOutlo
 
     try {
       const reading = await waqi.feed(where);
-      return send(res, 200, {
-        reading: { ...reading, stationId: reading.stationId || where.stationId },
-        ...(includeOutlook ? { outlook: estimateHazeOutlook(reading, now()) } : {}),
-      });
+      return send(res, 200, { reading: { ...reading, stationId: reading.stationId || where.stationId } });
     } catch (error) {
       const known = error instanceof WaqiError;
       const status = !known ? 500 : error.code === 'missing_config' ? 503

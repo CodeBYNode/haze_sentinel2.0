@@ -1,13 +1,14 @@
 import {createServer} from 'node:http';
 import {WaqiService} from './lib/waqi.mjs';
 import {createAirQualityHandler} from './lib/air-quality.mjs';
+import {createHazeOutlookHandler} from './lib/haze-outlook-api.mjs';
 import {createLocationSearchHandler} from './lib/locations.mjs';
 import {NewsDataService} from './lib/newsdata.mjs';
 import {createChatHandler} from './lib/chat.mjs';
 import {handleSpendings} from './spendings.mjs';
 const port=Number(process.env.API_PORT||8787),waqi=new WaqiService(),news=new NewsDataService();
 const handleAirQuality=createAirQualityHandler({waqi});
-const handleHazeOutlook=createAirQualityHandler({waqi,includeOutlook:true});
+const handleHazeOutlook=createHazeOutlookHandler();
 const handleLocationSearch=createLocationSearchHandler({waqi});
 const handleChat=createChatHandler({waqi,news});
 const handleTomorrow=createChatHandler({waqi,news,tomorrow:true});

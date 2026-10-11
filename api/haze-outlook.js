@@ -1,3 +1,3 @@
-import { createAirQualityHandler } from '../server/lib/air-quality.mjs';
+import { createHazeOutlookHandler } from '../server/lib/haze-outlook-api.mjs';
 
-export default createAirQualityHandler({ includeOutlook: true });
+export default createHazeOutlookHandler();

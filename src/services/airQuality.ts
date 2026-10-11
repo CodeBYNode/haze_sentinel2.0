@@ -1,5 +1,6 @@
 import type { AQReading, Profile } from '../core/types';
 import type { HazeOutlook } from '../core/outlook';
+import type { NewsFeed } from './news';
 export type StationOption = { name: string; stationId: string; coordinates: { lat: number; lon: number } | null; aqi: number | null };
 export type RefreshIntervals = { hazeRefreshIntervalMinutes: number; newsRefreshIntervalHours: number };
 export type BackendReading = Omit<AQReading, 'scale' | 'location'> & { indexName?: string };
@@ -25,12 +26,12 @@ export async function getCurrentAir(profile: Profile, signal?: AbortSignal): Pro
   const body = await message(await fetch('/api/air-quality?' + locationQuery(profile), { signal, cache: 'no-store' }));
   return { ...normalizeReading(body.reading), stationId: body.reading.stationId || profile.stationId };
 }
-export async function getHazeOutlook(profile: Profile, signal?: AbortSignal): Promise<{ reading: AQReading; outlook: HazeOutlook }> {
-  const body = await message(await fetch('/api/haze-outlook?' + locationQuery(profile), { signal, cache: 'no-store' }));
+export async function getHazeOutlook(profile: Profile, signal?: AbortSignal): Promise<{ outlook: HazeOutlook; news: NewsFeed }> {
+  const body = await message(await fetch('/api/haze-outlook?' + new URLSearchParams({ location: profile.location }), { signal, cache: 'no-store' }));
   const outlook = body.outlook;
   if (!outlook || !['estimated', 'unavailable'].includes(outlook.status) || typeof outlook.summary !== 'string'
-    || !outlook.alleviation || !outlook.anotherWave) throw new Error('The server returned an invalid haze outlook.');
-  return { reading: { ...normalizeReading(body.reading), stationId: body.reading.stationId || profile.stationId }, outlook };
+    || !outlook.alleviation || !outlook.anotherWave || !Array.isArray(body.news?.articles)) throw new Error('The server returned an invalid haze outlook.');
+  return { outlook, news: body.news };
 }
 export async function searchStations(query: string, signal?: AbortSignal): Promise<StationOption[]> {
   const body = await message(await fetch('/api/locations/search?q=' + encodeURIComponent(query), { signal, cache: 'no-store' }));

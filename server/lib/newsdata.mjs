@@ -67,8 +67,11 @@ export class NewsDataError extends Error {
 }
 
 export class NewsDataService {
-  constructor({ apiKey = process.env.NEWSDATA_API_KEY, intervalHours = process.env.NEWS_REFRESH_INTERVAL_HOURS, fetchImpl = fetch, now = () => Date.now(), retryMs = 15 * 60 * 1000 } = {}) {
+  constructor({ apiKey = process.env.NEWSDATA_API_KEY, intervalHours = process.env.NEWS_REFRESH_INTERVAL_HOURS, fetchImpl = fetch, now = () => Date.now(), retryMs = 15 * 60 * 1000, queries = SEARCHES, countries = 'my,id,sg', languages = 'en,ms' } = {}) {
     this.apiKey = apiKey?.trim();
+    this.queries = queries;
+    this.countries = countries;
+    this.languages = languages;
     const parsedHours = Number(intervalHours);
     this.intervalMs = Number.isFinite(parsedHours) && parsedHours > 0 ? parsedHours * 60 * 60 * 1000 : 3 * 60 * 60 * 1000;
     this.fetch = fetchImpl;
@@ -108,8 +111,8 @@ export class NewsDataService {
   async request(query) {
     const url = new URL(ENDPOINT);
     url.searchParams.set('q', query);
-    url.searchParams.set('country', 'my,id,sg');
-    url.searchParams.set('language', 'en,ms');
+    if (this.countries) url.searchParams.set('country', this.countries);
+    if (this.languages) url.searchParams.set('language', this.languages);
     url.searchParams.set('size', '10');
     let response;
     try {
@@ -129,7 +132,7 @@ export class NewsDataService {
   }
 
   async refresh() {
-    const outcomes = await Promise.allSettled(SEARCHES.map(query => this.request(query)));
+    const outcomes = await Promise.allSettled(this.queries.map(query => this.request(query)));
     const fulfilled = outcomes.filter(x => x.status === 'fulfilled');
     const failed = outcomes.filter(x => x.status === 'rejected');
     if (!fulfilled.length) {
